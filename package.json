@@ -1,0 +1,18 @@
+{
+  "name": "@digitalservicebund/delivery-expertise",
+  "version": "0.0.0-development",
+  "description": "Collating and visualising project demand matched against current delivery capabilities.",
+  "main": "index.js",
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/digitalservicebund/delivery-expertise.git"
+  },
+  "keywords": [],
+  "author": "Mike Pierce <mike.pierce@digitalservice.bund.de>",
+  "homepage": "https://github.com/digitalservicebund/delivery-expertise#readme",
+  "devDependencies": {
+    "@commitlint/cli": "^21.0.1",
+    "@commitlint/config-conventional": "^21.0.1",
+    "lefthook": "^2.1.8"
+  }
+}
