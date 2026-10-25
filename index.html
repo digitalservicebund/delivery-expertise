@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Engineering expertise</title>
+  <link rel="stylesheet" href="src/style.css">
+  <script type="module" src="src/main.js"></script>
+</head>
+<body>
+  <header>
+    <h1>Engineering expertise <span id="quarter"></span></h1>
+    <ul class="legend">
+      <li><i class="short"></i>Critical shortage</li>
+      <li><i class="strained"></i>Undersupplied</li>
+      <li><i class="fragile"></i>Covered but fragile</li>
+      <li><i class="covered"></i>Well covered</li>
+      <li><i class="surplus"></i>Oversupplied</li>
+      <li><i class="hatch-key"></i>Hatched: filled by someone more senior</li>
+    </ul>
+    <div class="header-row">
+      <div id="personas" role="group" aria-label="View as"></div>
+      <p id="progress" class="muted"></p>
+    </div>
+  </header>
+  <nav aria-label="Projects and teams"><ul id="scopes"></ul><div id="for-you" hidden></div></nav>
+  <main>
+    <svg id="chart" role="img" aria-label="Demanded expertise by level and FTE"></svg>
+    <section id="detail" hidden></section>
+  </main>
+  <nav aria-label="Expertise"><ul id="expertise"></ul></nav>
+</body>
+</html>
