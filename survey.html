@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Engineering expertise: project survey</title>
+  <style>
+    :root { --muted: #5f6368; --line: #e8eaed; --accent: #1a73e8; font: 15px/1.5 system-ui, sans-serif; color: #202124; }
+    body { margin: 0; background: #f8f9fa; }
+    main { max-width: 72rem; margin: 2rem auto; padding: 0 1rem; }
+    section, header { background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 1.25rem 1.5rem; margin-bottom: 1rem; }
+    h1 { font-size: 1.4rem; margin: 0 0 0.5rem; }
+    h2 { font-size: 1.1rem; margin: 0 0 0.25rem; }
+    h3 { font-size: 0.95rem; margin: 1rem 0 0.5rem; }
+    p { margin: 0.5rem 0; }
+    .muted { color: var(--muted); font-size: 0.9rem; }
+    table { border-collapse: collapse; width: 100%; table-layout: fixed; }
+    th:first-child, td:first-child { width: 8rem; }
+    th.support, td.support { width: 7rem; }
+    th, td { padding: 0.35rem 0.5rem; border-bottom: 1px solid var(--line); text-align: center; }
+    th { font-weight: 500; color: var(--muted); font-size: 0.8rem; }
+    th:first-child, td:first-child { text-align: left; }
+    th.support, td.support, th.coverage, td.coverage { border-left: 1px solid var(--line); }
+    dl { display: grid; grid-template-columns: max-content 1fr; gap: 0.25rem 1rem; margin: 0.5rem 0; }
+    dt { font-weight: 600; }
+    dd { margin: 0; }
+    fieldset { border: 0; padding: 0; margin: 0; }
+    legend { font-weight: 600; font-size: 0.95rem; margin: 1rem 0 0.5rem; padding: 0; }
+    label.choice { display: block; padding: 0.15rem 0; cursor: pointer; }
+    select, textarea { font: inherit; width: 100%; box-sizing: border-box; padding: 0.4rem; }
+    button { font: inherit; padding: 0.5rem 1.25rem; border: 0; border-radius: 4px; background: var(--accent); color: #fff; cursor: pointer; }
+    .demo { background: #fef7e0; border-color: #f9e2a2; }
+    td:has(input) { position: relative; padding-top: 1.1rem; padding-bottom: 1rem; }
+    tr.groups th { color: #202124; font-weight: 600; border-bottom: 0; }
+    td.was { background: #e8f0fe; }
+    td.suggested { outline: 2px dashed #9aa0a6; outline-offset: -4px; }
+    td.was::before, td.suggested::after { position: absolute; left: 0; right: 0; font-size: 0.6rem; line-height: 1; white-space: nowrap; color: var(--muted); }
+    td.was::before { content: attr(data-last); top: 0.25rem; color: var(--accent); }
+    td.suggested::after { content: "Suggested"; bottom: 0.2rem; }
+    details.how { margin-top: 0.75rem; font-size: 0.85rem; color: var(--muted); }
+    details.how summary { cursor: pointer; color: var(--accent); }
+    details.how ul { margin: 0.5rem 0 0; padding-left: 1.25rem; }
+    details.how li { margin: 0.25rem 0; }
+    details.how strong { color: #202124; }
+    /* Small screens: each working method takes two lines, need on top, coverage below. */
+    @media (max-width: 44rem) {
+      main { padding: 0 0.5rem; }
+      section { padding: 1rem; }
+      table, tbody { display: block; }
+      caption { display: block; margin-bottom: 0.5rem; }
+      tr { display: grid; grid-template-columns: 6rem repeat(5, minmax(0, 1fr)); border-bottom: 1px solid var(--line); }
+      th, td { border-bottom: 0; border-left: 0 !important; padding-left: 0.2rem; padding-right: 0.2rem; font-size: 0.75rem; }
+      th:first-child, td:first-child { width: auto; grid-row: span 2; align-self: center; font-size: 0.85rem; }
+      th.support, td.support { width: auto; }
+      .need { grid-row: 1; }
+      .cov, .support { grid-row: 2; border-top: 1px dashed var(--line); }
+      tr.groups .need { grid-column: 2 / -1; }
+      tr.groups .cov { grid-column: 2 / 6; }
+      tr.groups th:first-child { display: none; }
+    }
+    pre { overflow-x: auto; background: #f1f3f4; padding: 0.75rem; font-size: 0.8rem; }
+  </style>
+  <script type="module" src="src/survey.js"></script>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Engineering expertise: project survey</h1>
+      <p>Every quarter, each team tells us what engineering work it needs and how the quarter looks with the people it has. It takes about ten minutes. We never ask about named people.</p>
+      <p>The answers show where the discipline is short or has more than it needs, where to grow people, and who could help whom. Marking a row "over" is how other teams get help, and how yours gets help next time. It starts a conversation with you. Nobody is moved without one.</p>
+      <h3>How to answer</h3>
+      <p><strong>Answer only the areas your team needs.</strong> Leave everything else on "Not needed".</p>
+      <p><strong>How many people need to work this way?</strong> Count people, not time. The same person can count in several areas. Pick the closest of 1, 2, 3 or 5.</p>
+      <p><strong>Critical, under, adequate, over:</strong> for each working method you need, is it covered on your team today? Critical means the gap blocks delivery or breaches an obligation.</p>
+      <p><strong>Also from…</strong> Tick where you expect to draw on a team or community: the platform team, the legal and IT security team, or a community of practice. It is in addition to the people your team needs, not instead of them.</p>
+      <dl>
+        <dt>Operative</dt><dd>Implementing, applying standard methods, finding solutions, executing</dd>
+        <dt>Conceptual</dt><dd>Planning, coordinating, shaping and guiding; adapting methods to the situation</dd>
+        <dt>Strategic</dt><dd>Technically innovative and entrepreneurial with limited resources; creating guidelines, leading, looking ahead</dd>
+        <dt>Comprehensive</dt><dd>Strategic across the wider ecosystem, including trends and developments beyond the project</dd>
+      </dl>
+    </header>
+
+    <section class="demo">
+      <h2>Prototype demo</h2>
+      <select id="demo-state" aria-label="Prototype state">
+        <option value="fresh">Fresh state: first survey, nothing prefilled</option>
+        <option value="historical">Historical state: last quarter's answers and a hint from recorded work</option>
+      </select>
+    </section>
+
+    <form id="survey">
+      <section>
+        <h2 id="team-heading">Your team</h2>
+        <select id="team" name="team" required aria-labelledby="team-heading"><option value="">Choose your project and team</option></select>
+      </section>
+      <div id="areas"></div>
+      <section>
+        <h2 id="notes-heading">Anything we should know?</h2>
+        <textarea id="notes" name="notes" rows="3" aria-labelledby="notes-heading"></textarea>
+        <p><button type="submit">Submit</button></p>
+        <div id="result" hidden>
+          <p class="muted">Prototype: nothing is sent. These are the rows your answers would add to the Project Demand tab.</p>
+          <pre id="rows"></pre>
+        </div>
+      </section>
+    </form>
+  </main>
+</body>
+</html>
