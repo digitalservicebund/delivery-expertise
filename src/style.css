@@ -53,6 +53,7 @@ main { grid-area: main; padding: 0 var(--strip, 1.75rem); display: flex; flex-di
 
 h1 { font-size: 1.15rem; margin: 0; }
 h1 span, .muted { color: var(--muted); font-weight: normal; }
+.page-link { margin-left: auto; white-space: nowrap; }
 #progress { margin: 0; }
 .legend { display: flex; gap: 1.25rem; margin: 0; padding: 0; list-style: none; color: var(--muted); font-size: 0.85rem; }
 i { display: inline-block; width: 0.7em; height: 0.7em; border-radius: 50%; margin-right: 0.45em; flex: none; }
