@@ -10,3 +10,12 @@ updates:
     open-pull-requests-limit: 10
     cooldown:
       default-days: 3
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "tuesday"
+    assignees:
+      - "monachilada"
+    cooldown:
+      default-days: 3
