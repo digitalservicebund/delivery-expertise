@@ -8,6 +8,8 @@ npm test
 npm run data   # regenerates the dummy data in data/ from teams.csv
 ```
 
+The pages live in `public/` and load `src/` and `data/` beside them. Every push to `main` deploys `public/`, `src/` and `data/` to GitHub Pages via `.github/workflows/pages.yml`.
+
 ## Inputs
 
 Five CSV files in `data/`: the project survey, assessments, activity, the discipline survey and the staffing per quarter. Every row carries its quarter. `teams.csv` is the real, anonymised current staffing that the dummy data is generated from.
