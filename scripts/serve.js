@@ -9,10 +9,12 @@ const TYPES = { ".html": "text/html", ".js": "text/javascript", ".css": "text/cs
 
 createServer(async (req, res) => {
   const path = normalize(decodeURIComponent(new URL(req.url, "http://localhost").pathname)).replace(/^(\.\.[/\\])+/, "");
-  const file = join(ROOT, path.endsWith("/") ? `${path}index.html` : path);
+  const rel = path.endsWith("/") ? `${path}index.html` : path;
+  // Mirrors the GitHub Pages layout: pages live in public/, src/ and data/ sit beside them.
+  const file = join(ROOT, rel);
   if (!file.startsWith(ROOT)) return res.writeHead(403).end();
   try {
-    const body = await readFile(file);
+    const body = await readFile(join(ROOT, "public", rel)).catch(() => readFile(file));
     res.writeHead(200, { "Content-Type": `${TYPES[extname(file)] ?? "application/octet-stream"}; charset=utf-8`, "Cache-Control": "no-store" });
     res.end(body);
   } catch {
