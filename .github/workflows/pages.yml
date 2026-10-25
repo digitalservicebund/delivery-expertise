@@ -23,11 +23,17 @@ jobs:
         with:
           node-version: lts/*
       - run: npm test
+      # The site lives under an unguessable folder taken from a secret, so the
+      # URL is not discoverable from the repo. The site root stays empty (404).
       - name: Assemble site
+        env:
+          PAGES_PATH: ${{ secrets.PAGES_PATH }}
         run: |
-          mkdir _site
-          cp -r public/. _site/
-          cp -r src data _site/
+          [[ "$PAGES_PATH" =~ ^[A-Za-z0-9_-]{16,}$ ]] || { echo "::error::PAGES_PATH secret missing or too short"; exit 1; }
+          mkdir -p "_site/$PAGES_PATH"
+          cp -r public/. "_site/$PAGES_PATH/"
+          cp -r src data "_site/$PAGES_PATH/"
+          touch _site/.nojekyll
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

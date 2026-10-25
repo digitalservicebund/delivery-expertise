@@ -8,7 +8,7 @@ npm test
 npm run data   # regenerates the dummy data in data/ from teams.csv
 ```
 
-The pages live in `public/` and load `src/` and `data/` beside them. Every push to `main` deploys `public/`, `src/` and `data/` to GitHub Pages via `.github/workflows/pages.yml`.
+The pages live in `public/` and load `src/` and `data/` beside them. Every push to `main` deploys `public/`, `src/` and `data/` to GitHub Pages via `.github/workflows/pages.yml`, under the unguessable folder in the `PAGES_PATH` repository secret (kept in 1Password). The site root returns 404.
 
 ## Inputs
 
