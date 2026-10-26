@@ -3,16 +3,24 @@
 Collating and visualising project demand matched against current delivery capabilities.
 
 ```sh
+npm run data   # generates the dummy data in data/ from teams.csv (needed once before npm start)
 npm start      # serves on http://localhost:8000 (survey prototype at /survey.html)
 npm test
-npm run data   # regenerates the dummy data in data/ from teams.csv
 ```
 
-The pages live in `public/` and load `src/` and `data/` beside them. Every push to `main` deploys `public/`, `src/` and `data/` to GitHub Pages via `.github/workflows/pages.yml`, under the unguessable folder in the `PAGES_PATH` repository secret (kept in 1Password). The site root returns 404.
+`teams.csv` and `data/` are git-ignored and must never be committed. Get `teams.csv` from 1Password and put it in the repo root before running `npm run data`.
+
+The pages live in `public/` and load `src/` and `data/` beside them. Every push to `main` deploys to GitHub Pages via `.github/workflows/pages.yml`. The workflow decodes `teams.csv` from the `TEAMS_CSV` repository secret (base64), generates `data/`, and publishes everything under the unguessable folder in the `PAGES_PATH` secret. Both secrets are kept in 1Password. The site root returns 404.
+
+To update the staffing seed, update 1Password, then:
+
+```sh
+base64 -i teams.csv | gh secret set TEAMS_CSV
+```
 
 ## Inputs
 
-Five CSV files in `data/`: the project survey, assessments, activity, the discipline survey and the staffing per quarter. Every row carries its quarter. `teams.csv` is the real, anonymised current staffing that the dummy data is generated from.
+Five CSV files in `data/`: the project survey, assessments, activity, the discipline survey and the staffing per quarter. Every row carries its quarter. They are generated from `teams.csv`, the real, anonymised current staffing, which stays out of the repo.
 
 | File | Source | Columns |
 |---|---|---|

@@ -23,6 +23,17 @@ jobs:
         with:
           node-version: lts/*
       - run: npm test
+      # The real staffing seed never lives in the repo. It comes from the
+      # TEAMS_CSV secret (base64, master copy in 1Password) and the dummy
+      # data is generated from it on every deploy.
+      - name: Generate data
+        env:
+          TEAMS_CSV: ${{ secrets.TEAMS_CSV }}
+        run: |
+          [ -n "$TEAMS_CSV" ] || { echo "::error::TEAMS_CSV secret missing"; exit 1; }
+          printf '%s' "$TEAMS_CSV" | base64 -d > teams.csv
+          npm run data
+          rm teams.csv
       # The site lives under an unguessable folder taken from a secret, so the
       # URL is not discoverable from the repo. The site root stays empty (404).
       - name: Assemble site
