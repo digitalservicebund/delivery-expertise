@@ -66,7 +66,11 @@ const domainOf = (project) => DOMAINS.find(([re]) => re.test(project))?.[1] ?? "
 // Internally a domain is the expertise key "Domain:<name>"; written out as the expertise "Domain expertise" plus a domain.
 const keyed = (key) => (key.startsWith("Domain:") ? { expertise: "Domain expertise", domain: key.slice(7) } : { expertise: key, domain: "" });
 
-const staffing = parseCsv(readFileSync(new URL("../teams.csv", import.meta.url), "utf8"));
+// Only the engineering discipline counts, sub-departments included ("Engineering / Platform"). Anyone else in
+// the export, such as design or product, holds no position here.
+const isEngineering = (department) => /^Engineering(\s*\/|$)/.test(department.trim());
+const staffing = parseCsv(readFileSync(new URL("../teams.csv", import.meta.url), "utf8")).filter((r) => isEngineering(r.Department ?? ""));
+if (!staffing.length) throw new Error("teams.csv has no Engineering rows: check its Department column.");
 
 const teams = new Map();
 staffing.forEach((row, i) => {
