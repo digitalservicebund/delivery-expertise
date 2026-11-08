@@ -108,6 +108,12 @@ export async function withSheet(config, accessToken, sheetId, label, fn, viewId 
   }
 }
 
+// A tab's first row: its column headers, as text.
+export async function readHeader(accessToken, sheetId, tab) {
+  const { values = [] } = await call(accessToken, `${API}/${sheetId}/values/${encodeURIComponent(`${tabRange(tab)}!1:1`)}`);
+  return (values[0] ?? []).map(String);
+}
+
 export const tabTitles = async (accessToken, sheetId) =>
   new Set((await call(accessToken, `${API}/${sheetId}?fields=sheets.properties.title`)).sheets.map((s) => s.properties.title));
 

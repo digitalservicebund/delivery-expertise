@@ -43,3 +43,17 @@ export const DEFAULT_BUCKETS = [
   "Discovery & Inception", "Frontend", "Backend", "Architecture", "Security",
   "DevOps, CI/CD & Infrastructure", "Quality & Documentation", "Data & AI", "Compliance & Privacy", "Accessibility",
 ];
+// Which suggested areas each default bucket covered, for mapping answers given under the defaults to the buckets
+// that replaced them (inferHistory in src/buckets.js).
+export const DEFAULT_BUCKET_AREAS = {
+  "Discovery & Inception": ["Technical discovery", "Prototyping"],
+  Frontend: ["Frontend development", "Design systems", "Performance", "Mobile"],
+  Backend: ["Backend development", "APIs & integration"],
+  Architecture: ["Software architecture", "Legacy modernisation"],
+  Security: ["Application security", "Identity & access"],
+  "DevOps, CI/CD & Infrastructure": ["CI/CD", "Cloud infrastructure", "Containers & orchestration", "Observability", "Developer experience"],
+  "Quality & Documentation": ["Test automation", "Technical documentation"],
+  "Data & AI": ["Data engineering", "Data analysis", "Search", "Machine learning", "AI engineering"],
+  "Compliance & Privacy": ["Data protection", "IT security compliance"],
+  Accessibility: ["Accessibility"],
+};

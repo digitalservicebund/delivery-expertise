@@ -1,7 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { compareBuckets, bucketPrompt, parseBuckets, readBuckets, bucketRows, areasToGroup, pending, topAreas, inBuckets, BUCKET_HEADER, HISTORY_HEADER, nextHistory, aliasesOf, renamedTo } from "../src/buckets.js";
+import { compareBuckets, bucketPrompt, parseBuckets, readBuckets, bucketRows, areasToGroup, pending, topAreas, inBuckets, BUCKET_HEADER, HISTORY_HEADER, nextHistory, aliasesOf, renamedTo, inferHistory } from "../src/buckets.js";
 import { liveLayout } from "../src/sheets.js";
+import { AREA_NAMES, DEFAULT_BUCKETS, DEFAULT_BUCKET_AREAS } from "../src/areas.js";
 
 test("the areas to group are the standard ones, every surveyed area and every grouped one, without domain expertise", () => {
   const demand = [{ expertise: "Frontend" }, { expertise: "Rust" }, { expertise: "Domain expertise", domain: "Tax" }, { expertise: " " }];
@@ -183,4 +184,28 @@ test("old bucket names become aliases of the bucket they went to", () => {
 test("rows naming an old bucket are counted under the bucket it went to", () => {
   const out = inBuckets({ demand: [], plan: [{ kind: "adjust", subject: "Infra" }] }, [{ area: "Terraform", bucket: "Platform" }], [{ bucket: "Infra", now: "Platform" }]);
   assert.equal(out.plan[0].subject, "Platform");
+});
+
+test("former buckets are found in the IC responses' columns and mapped retroactively by their areas", () => {
+  const headers = ["Timestamp", "Email address", "Expertise [Web]", "Expertise [Data & AI]", "Expertise [Kubernetes]", "Expertise [Old]", "Expertise [Infra]", "Anything to add?"];
+  const buckets = [
+    { area: "Frontend development", bucket: "Web" }, { area: "Kubernetes", bucket: "Platform" },
+    { area: "Data engineering", bucket: "Data" }, { area: "AI engineering", bucket: "Data" }, { area: "Search", bucket: "Web" },
+  ];
+  const history = [{ bucket: "Infra", now: "Platform", changed_at: "T1" }];
+  const defaults = { "Data & AI": ["Data engineering", "Data analysis", "Search", "Machine learning", "AI engineering"] };
+  const { rows, unresolved } = inferHistory(headers, buckets, history, defaults, "T2");
+  // Web is a current bucket and Infra is known: neither is inferred again.
+  assert.deepEqual(rows, [
+    { bucket: "Data & AI", now: "Data", changed_at: "T2" },
+    { bucket: "Kubernetes", now: "Platform", changed_at: "T2" },
+  ]);
+  assert.deepEqual(unresolved, ["Old"]);
+  // Without buckets the form still asks about the defaults: nothing to map.
+  assert.deepEqual(inferHistory(headers, [], [], defaults, "T2"), { rows: [], unresolved: [] });
+});
+
+test("every default bucket's areas are suggested areas", () => {
+  assert.deepEqual(Object.keys(DEFAULT_BUCKET_AREAS), DEFAULT_BUCKETS);
+  for (const areas of Object.values(DEFAULT_BUCKET_AREAS)) for (const a of areas) assert.ok(AREA_NAMES.includes(a), a);
 });

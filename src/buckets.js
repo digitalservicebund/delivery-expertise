@@ -78,7 +78,35 @@ export function nextHistory(history, result, at) {
   return [...latest.values()].filter((r) => !current.has(r.bucket) && r.bucket !== r.now);
 }
 
-export const renamedTo = (history) => new Map(history.filter((r) => r.bucket && r.now).map((r) => [r.bucket, r.now]));
+// Retroactive history: every bucket the IC form ever asked about is a column of its responses ("Expertise [X]").
+// A former name that the history doesn't know is placed by its areas: an area name goes to the bucket that area is
+// in now; one of the default buckets (defaults: name -> the suggested areas it covered) goes to the current bucket
+// holding most of those areas. Returns new history rows and the names that couldn't be placed.
+export function inferHistory(headers, bucketRows, history, defaults, at) {
+  const bucketOf = new Map(bucketRows.filter((r) => r.area && r.bucket).map((r) => [r.area, r.bucket]));
+  if (!bucketOf.size) return { rows: [], unresolved: [] };
+  const current = new Set(bucketOf.values());
+  const known = renamedTo(history);
+  const names = headers.map((h) => String(h).match(/^Expertise \[(.+)\]$/)?.[1]).filter(Boolean);
+  const rows = [];
+  const unresolved = [];
+  for (const name of new Set(names)) {
+    if (current.has(name) || known.has(name)) continue;
+    const now = bucketOf.get(name) ?? mostCommon((defaults[name] ?? []).map((a) => bucketOf.get(a)).filter(Boolean));
+    if (now) rows.push({ bucket: name, now, changed_at: at });
+    else unresolved.push(name);
+  }
+  return { rows, unresolved };
+}
+
+// The most frequent value, ties going to the first seen; undefined for none.
+function mostCommon(values) {
+  const counts = new Map();
+  for (const v of values) counts.set(v, (counts.get(v) ?? 0) + 1);
+  return [...counts].reduce((best, entry) => (!best || entry[1] > best[1] ? entry : best), null)?.[0];
+}
+
+export const renamedTo =(history) => new Map(history.filter((r) => r.bucket && r.now).map((r) => [r.bucket, r.now]));
 
 // Current bucket -> the former buckets that went into it.
 export function aliasesOf(history) {

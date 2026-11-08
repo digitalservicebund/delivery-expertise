@@ -2,12 +2,12 @@
 // dummy data, set up the live sheets' tabs and imports, and set up the IC form.
 import { generateDummyData } from "./dummy.js";
 import { bar, currentMode, loadConfig, DATA_TABS, SHEET_LABEL } from "./source.js";
-import { token, hasToken, canEdit, readTabs, replaceTabs, setUpTabs, withSheet, tabTitles, getForm, updateForm } from "./google.js";
+import { token, hasToken, canEdit, readTabs, readHeader, replaceTabs, setUpTabs, withSheet, tabTitles, getForm, updateForm } from "./google.js";
 import { liveLayout } from "./sheets.js";
 import { FORM_INFO, formItems, formRequests, branchRequest, supplyFormula } from "./icform.js";
-import { AREA_NAMES, DEFAULT_BUCKETS } from "./areas.js";
+import { AREA_NAMES, DEFAULT_BUCKETS, DEFAULT_BUCKET_AREAS } from "./areas.js";
 import { formRows } from "./prefill.js";
-import { compareBuckets, bucketPrompt, parseBuckets, readBuckets, bucketRows, areasToGroup, pending, topAreas, nextHistory, aliasesOf } from "./buckets.js";
+import { compareBuckets, bucketPrompt, parseBuckets, readBuckets, bucketRows, areasToGroup, pending, topAreas, nextHistory, aliasesOf, inferHistory } from "./buckets.js";
 
 const mode = await currentMode();
 bar(mode);
@@ -67,6 +67,24 @@ async function readBucketTabs(config, t, sheet = "discipline") {
   return { buckets: rows.buckets, history: rows["bucket-history"] };
 }
 
+// Retroactive bucket history: every bucket the IC form ever asked about is a column of its responses. Former ones
+// the history doesn't know yet are placed by their areas and added to the discipline sheet's bucket-history tab,
+// where they can be corrected by hand. Returns the added rows; reports in lines.
+async function recoverHistory(config, t, tab, buckets, history, lines) {
+  status.replaceChildren("Looking for former buckets in the IC responses…");
+  const headers = await readHeader(t, config.sheets.icResponses, tab);
+  const { rows, unresolved } = inferHistory(headers, buckets, history, DEFAULT_BUCKET_AREAS, new Date().toISOString());
+  if (rows.length) {
+    const id = config.sheets.discipline;
+    await withSheet(config, t, id, SHEET_LABEL.discipline, () => replaceTabs(t, id, { "bucket-history": [...history, ...rows] }));
+    lines.push(`discipline sheet, bucket-history: former buckets found in the IC responses, now counted with their closest match: ${rows.map((r) => `${r.bucket} → ${r.now}`).join(", ")}. Correct any in the tab and run this again.`);
+  }
+  if (unresolved.length) {
+    lines.push(`IC responses: answers under ${unresolved.join(", ")} aren't counted: no current bucket matches. Add a row for each to the discipline sheet's bucket-history tab (bucket, now) and run this again.`);
+  }
+  return rows;
+}
+
 // Survey sheets first, so the aggregate sheet's imports point at tabs that exist.
 async function setUpLiveSheets(config, t) {
   const layout = liveLayout(config.sheets);
@@ -77,8 +95,9 @@ async function setUpLiveSheets(config, t) {
   // Without linked responses the rest is still worth setting up: supply just waits for a later run.
   try {
     const tab = await responsesTab(config, t);
-    layout.aggregate.supply = { formula: supplyFormula(config.sheets.icResponses, tab, areas, aliasesOf(history)) };
     lines.push(`IC responses sheet: counting from the “${tab}” tab`);
+    const fullHistory = [...history, ...(await recoverHistory(config, t, tab, buckets, history, lines))];
+    layout.aggregate.supply = { formula: supplyFormula(config.sheets.icResponses, tab, areas, aliasesOf(fullHistory)) };
   } catch (err) {
     lines.push(`aggregate sheet, supply: skipped. ${err.message}`);
   }
