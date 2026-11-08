@@ -444,6 +444,18 @@ function drawLegend(cx, cy, size, individual = false) {
     el("line", { class: "legend-leader", x1: px, y1: py, x2: lx - side * 3, y2: ly - 3 }, group);
     el("text", { class: "legend-label", x: lx, y: ly, "text-anchor": side > 0 ? "start" : "end" }, group, text);
   }
+  return group;
+}
+
+// Width of the right-hand strip for the legend and role lines when there is no domain chart: the legend's
+// labels on both sides of its circle, plus the role lines' names.
+const SIDE_STRIP = 380;
+
+// Shifts a drawn group left until its right edge, labels included, stays inside the chart. Returns the group.
+function fitRight(group, width, margin = 8) {
+  const over = group.getBBox().x + group.getBBox().width - (width - margin);
+  if (over > 0) group.setAttribute("transform", `translate(${-over.toFixed(1)} 0)`);
+  return group;
 }
 
 function renderChart(model, selected, you = null) {
@@ -468,8 +480,11 @@ function renderChart(model, selected, you = null) {
   // Side by side only while the main chart is height-limited, so the column never costs it size:
   // as soon as the main radial fills the container's width, the domain chart drops underneath it.
   const column = hasDomains && height / 2 - 90 <= width / 2 - label;
-  const R = Math.max(60, Math.min(column ? height / 2 - 90 : hasDomains ? height / 4 - 55 : height / 2 - 90, (column ? width * 0.62 : width) / 2 - label));
-  const mainX = column ? R + label : width / 2;
+  // Without domain demand, the legend and role lines get a right-hand strip of their own where there is room,
+  // so they never sit on top of the main chart. On narrow screens they still float in the corner.
+  const side = !hasDomains && width >= 760 ? SIDE_STRIP : 0;
+  const R = Math.max(60, Math.min(column ? height / 2 - 90 : hasDomains ? height / 4 - 55 : height / 2 - 90, (column ? width * 0.62 : width - side) / 2 - label));
+  const mainX = column ? R + label : (width - side) / 2;
   const mainY = column ? height / 2 : hasDomains ? height / 4 + 15 : height / 2;
   renderRadial(model, main, { selected, you, cx: mainX, cy: mainY, R, number: rank, choose: (e) => e.name, centre: you ? "Own verified expertise" : "Discipline expertise frontier" });
 
@@ -496,7 +511,7 @@ function renderChart(model, selected, you = null) {
     domainChart(colX, top + (above - top) / 2, r);
     lines(colX, above, r);
   } else if (hasDomains) {
-    drawLegend(width - 140, 110, legendSizeOf(R), Boolean(you));
+    fitRight(drawLegend(width - 140, 60 + legendSizeOf(R), legendSizeOf(R), Boolean(you)), width);
     const top = height / 2 + 10;
     // Same size as the main chart unless the lines need room.
     const fit = (lift) => Math.max(50, Math.min(R, (height - top - 140 - lift) / 2));
@@ -505,8 +520,10 @@ function renderChart(model, selected, you = null) {
     domainChart(width / 2, roles.length ? top + (above - top) / 2 : (3 * height) / 4 - 10, r);
     lines(width / 2, above, r);
   } else {
-    drawLegend(width - 140, 110, legendSizeOf(R), Boolean(you));
-    lines(width - 160, 110 + legendSizeOf(R) + 50, 110);
+    const legend = fitRight(drawLegend(side ? width - side / 2 : width - 140, 60 + legendSizeOf(R), legendSizeOf(R), Boolean(you)), width);
+    // The role lines sit under the legend, centred on it.
+    const box = legend.getBBox();
+    lines(box.x + box.width / 2, box.y + box.height + 40, 110);
   }
   if (you) el("text", { class: "tick", x: width / 2, y: height - 12, "text-anchor": "middle" }, svg, "Shaded: your profile · fainter: your self-assessment · yellow: reflection zone · blue: imposter zone");
 }

@@ -21,10 +21,17 @@
 body {
   margin: 0;
   height: 100vh;
+  /* The page never scrolls: the chart fits the window and the lists scroll inside their drawers. Without this,
+     the collapsed right-hand drawer, slid out of view with a transform, adds its width as horizontal scroll. */
+  overflow: hidden;
+  contain: paint; /* clips it for good: hidden alone still lets focus or script scroll the page sideways */
   display: grid;
-  grid-template: auto minmax(0, 1fr) / 1fr;
-  grid-template-areas: "header" "main";
+  /* The data-mode bar (src/source.js) gets a row of its own above the header. Without an area of its own it
+     would be auto-placed into an extra column, shifting everything and adding scroll width. */
+  grid-template: auto auto minmax(0, 1fr) / 1fr;
+  grid-template-areas: "bar" "header" "main";
 }
+.mode-bar { grid-area: bar; }
 header { grid-area: header; display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 1.5rem; padding: 0.6rem 1rem; border-bottom: 1px solid var(--line); }
 nav {
   grid-area: main; z-index: 2; align-self: stretch;
