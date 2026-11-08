@@ -1,6 +1,8 @@
-// The project survey as a working page. Builds one section per area of expertise, and on submit shows the
-// rows the answers would add to the Project Demand tab. Nothing is sent anywhere.
+// The project survey as a working page. The team first picks the areas of expertise it needs from a word cloud
+// (sized by a best guess from its history, searchable, open to new areas). Only the picked areas get a grid.
+// On submit it shows the rows the answers would add to the Project Demand tab. Nothing is sent anywhere.
 import { parseCsv, toCsv } from "./csv.js";
+import { relevance, matches } from "./cloud.js";
 import { METHODS as METHOD_LEVEL, PEOPLE as PEOPLE_COUNT, LEVELS, supplyAsOf, assessedCoverage, WORKING_DAYS_PER_QUARTER, UTILISATION, BOOKABLE_DAYS_PER_QUARTER } from "./model.js";
 
 const QUARTER = "2027-Q1";
@@ -28,6 +30,8 @@ const DOMAIN_EXAMPLES = {
   Legislation: ["Implement rules from legal texts correctly", "Model legal processes and their edge cases", "Own how the product interprets and tracks legal change", "Shape how legislation is made digital-ready across government"],
 };
 const GENERIC_DOMAIN = ["Implement the domain's rules correctly", "Model the domain's processes and edge cases", "Own how the product follows changes in the domain", "Shape how the domain is made digital-ready across government"];
+// Areas a team adds itself have no tailored examples.
+const GENERIC_CUSTOM = ["Do the work to the team's conventions", "Plan and design the approach for the team", "Set the direction and standards for it across teams", "Shape it across government"];
 
 const $ = (tag, attrs = {}, ...children) => {
   const node = document.createElement(tag);
@@ -48,8 +52,8 @@ function mark(cell, kind, on, tip, tag = "") {
   else delete cell.dataset[kind];
   cell.title = [cell.dataset.was, cell.dataset.suggested].filter(Boolean).join("\n");
 }
-function areaSection({ id, name, subject, support, examples, note, previous, hint }) {
-  const section = $("section", { "data-area": name, "data-id": id, "data-support": support ?? "" });
+function areaSection({ id, name, expertise, domain = "", subject, support, examples, note, previous, hint }) {
+  const section = $("section", { "data-area": name, "data-id": id, "data-expertise": expertise, "data-domain": domain, "data-support": support ?? "" });
   section.append($("h2", {}, name));
   if (note) section.append($("p", { class: "muted" }, note));
   section.append($("p", { class: "muted" }, "Examples. " + METHODS.map((m, i) => `${m}: ${examples[i].charAt(0).toLowerCase()}${examples[i].slice(1)}.`).join(" ")));
@@ -91,7 +95,7 @@ function areaSection({ id, name, subject, support, examples, note, previous, hin
     }
     table.append(row);
   }
-  section.append(table);
+  section.append(table, nuance(id, subject));
   if (hint) {
     const how = $("ul");
     section.append($("details", { class: "how" }, $("summary", {}, "How are suggestions calculated?"), how));
@@ -101,6 +105,16 @@ function areaSection({ id, name, subject, support, examples, note, previous, hin
   }
 
   return section;
+}
+
+// Free text under each grid: what exactly within the area, and anything the grid can't say.
+function nuance(id, subject) {
+  const field = (name, label, control) => $("label", { class: "nuance" }, $("span", {}, label), control);
+  return $("div", { class: "nuance" },
+    field("specifics", `What specifically within ${subject}?`,
+      $("input", { type: "text", name: `${id}-specifics`, placeholder: "e.g. tools, frameworks, standards, sub-areas" })),
+    field("comment", "Comment",
+      $("textarea", { name: `${id}-comment`, rows: "2", placeholder: "Nuance the grid can't capture: timing, uncertainty, who you expect to join or leave" })));
 }
 
 // Coverage suggestion per needed working method, from the team's ratings combined with recorded work.
@@ -160,26 +174,29 @@ function explain(hint, coverageLines) {
 }
 
 // One row per working method that is needed or draws on support, in the Project Demand tab's shape.
-function rowsFor(form, team, domain) {
+// Only the areas the team picked have sections, so nothing else can produce rows.
+function rowsFor(form, team) {
   const rows = [];
-  for (const section of document.querySelectorAll("[data-area]")) {
-    const name = section.dataset.area;
-    const id = section.dataset.id;
+  for (const section of document.querySelectorAll("#areas [data-area]")) {
+    const { id, expertise, domain } = section.dataset;
+    const specifics = form.elements[`${id}-specifics`].value.trim();
+    const comment = form.elements[`${id}-comment`].value.trim();
     for (const method of METHODS) {
       const people = form.elements[`${id}-${slug(method)}`].value;
       const support = form.elements[`${id}-${slug(method)}-support`]?.checked ?? false;
       if (!people && !support) continue;
-      const isDomain = name.startsWith("Domain expertise");
       rows.push({
         quarter: QUARTER,
         team,
-        expertise: isDomain ? "Domain expertise" : name,
-        domain: isDomain ? domain : "",
+        expertise,
+        domain,
         method: method.toLowerCase(),
         people,
         coverage: form.elements[`${id}-${slug(method)}-coverage`]?.value ?? "",
         // Which support the team also draws on: platform, legal (legal and IT security) or cop (community of practice).
         support: support ? SUPPORT_KEY[section.dataset.support] ?? "" : "",
+        specifics,
+        comment,
       });
     }
   }
@@ -235,33 +252,133 @@ for (const team of teams) select.append($("option", { value: team }, team));
 const areas = document.getElementById("areas");
 const form = document.getElementById("survey");
 const demoState = document.getElementById("demo-state");
-function renderAreas() {
-  const team = select.value;
+const search = document.getElementById("area-search");
+const cloud = document.getElementById("cloud");
+const addButton = document.getElementById("add-area");
+
+// Step 1 state: the areas on offer, the ones picked (in picking order) and their built sections, kept so
+// answers survive unpicking and re-picking. Reset whenever the team or demo state changes.
+let catalogue = [];
+let picked = [];
+const built = new Map();
+
+function catalogueFor(team) {
   const domain = domainOf.get(projectOf.get(team));
-  const historical = team && demoState.value === "historical";
-  const extras = (id) => ({
-    previous: historical ? previousFor(team, id) : undefined,
-    hint: historical ? hintFor(team, id) : undefined,
+  const list = AREAS.map(([name, support, examples]) => ({ id: slug(name), name, expertise: name, subject: name, support, examples }));
+  if (domain) list.push({
+    id: "domain", name: `Domain expertise: ${domain}`, expertise: "Domain expertise", domain, subject: `${domain} domain knowledge`,
+    examples: DOMAIN_EXAMPLES[domain] ?? GENERIC_DOMAIN, note: "From your project's domain. If your team also works in another domain, add it.",
   });
-  areas.replaceChildren(...AREAS.map(([name, support, examples]) => areaSection({ id: slug(name), name, subject: name, support, examples, ...extras(slug(name)) })));
-  if (domain) {
-    const section = areaSection({
-      id: "domain",
-      name: `Domain expertise: ${domain}`,
-      subject: `${domain} domain knowledge`,
-      examples: DOMAIN_EXAMPLES[domain] ?? GENERIC_DOMAIN,
-      note: "Prefilled from your project's domain. If your team also works in another domain, tell the discipline head.",
-      ...extras("domain"),
-    });
-    areas.append(section);
-  }
+  // Areas other teams have added before are offered too.
+  const known = new Set(list.map((a) => a.expertise));
+  for (const name of new Set(demand.map((r) => r.expertise))) if (!known.has(name)) list.push(customArea(name));
+  return list;
 }
-for (const el of [select, demoState]) el.addEventListener("change", renderAreas);
-renderAreas();
+const customArea = (name) => ({ id: `x-${slug(name)}`, name, expertise: name, subject: name, support: COP, examples: GENERIC_CUSTOM, custom: true });
+
+// The best guess at what this team needs, from its last answers, booked work and ratings, then discipline-wide demand.
+function weightsFor(team, historical) {
+  const tally = (rows, value) => rows.reduce((acc, r) => ((acc[areaKey(r)] = (acc[areaKey(r)] ?? 0) + value(r)), acc), {});
+  const last = demand.filter((r) => r.quarter === lastAnswered);
+  const mine = (rows) => rows.filter((r) => r.team === team);
+  const signals = {
+    org: tally(last, (r) => PEOPLE_COUNT[r.people] ?? 0),
+    team: team ? {
+      demand: historical ? tally(mine(last), (r) => PEOPLE_COUNT[r.people] ?? 0) : {},
+      days: tally(mine(activity.filter((r) => r.quarter === lastRecorded)), (r) => Number(r.person_days)),
+      rated: tally(ratings.levels.filter((s) => s.team === team), () => 1),
+    } : {},
+  };
+  return relevance(catalogue.map(weightKey), signals);
+}
+// Areas added by teams are keyed like their survey rows: by the slug of their name.
+const weightKey = (a) => (a.id === "domain" ? "domain" : a.id.replace(/^x-/, ""));
+
+function renderCloud() {
+  const query = search.value;
+  const weights = renderCloud.weights ?? {};
+  const shown = catalogue.filter((a) => matches(a.name, query));
+  cloud.replaceChildren(...shown.map((a) => {
+    const w = weights[weightKey(a)] ?? 0;
+    const on = picked.includes(a.id);
+    const button = $("button", { type: "button", "aria-pressed": String(on), style: `font-size:${(0.85 + w * 1.15).toFixed(2)}rem`, title: a.custom ? "Added by a team" : "" }, a.name);
+    button.addEventListener("click", () => toggle(a.id));
+    return button;
+  }));
+  if (!shown.length) cloud.append($("p", { class: "muted" }, "No area matches. Add it as a new one."));
+  const exact = catalogue.some((a) => a.name.toLowerCase() === query.trim().toLowerCase());
+  addButton.hidden = !query.trim() || exact;
+  addButton.textContent = `+ Add “${query.trim()}” as a new area`;
+}
+
+function toggle(id) {
+  picked = picked.includes(id) ? picked.filter((p) => p !== id) : [...picked, id];
+  renderCloud();
+  renderPicked();
+}
+
+function addCustom() {
+  const name = search.value.trim();
+  if (!name) return;
+  const existing = catalogue.find((a) => a.name.toLowerCase() === name.toLowerCase());
+  const area = existing ?? customArea(name);
+  if (!existing) catalogue.push(area);
+  if (!picked.includes(area.id)) picked.push(area.id);
+  search.value = "";
+  renderCloud();
+  renderPicked();
+}
+
+// Step 2: one grid per picked area, in picking order.
+function renderPicked() {
+  const team = select.value;
+  const historical = team && demoState.value === "historical";
+  areas.replaceChildren(...picked.map((id) => {
+    if (!built.has(id)) {
+      const area = catalogue.find((a) => a.id === id);
+      const key = weightKey(area);
+      built.set(id, areaSection({
+        ...area,
+        note: area.custom ? "A new area. Describe it below so we can group it with similar ones." : area.note,
+        previous: historical ? previousFor(team, key) : undefined,
+        hint: historical && !area.custom ? hintFor(team, key) : undefined,
+      }));
+    }
+    return built.get(id);
+  }));
+  if (!picked.length) areas.append($("section", { class: "muted" }, "Pick the areas your team needs above. Each one you pick gets its own questions here."));
+}
+
+function reset() {
+  const team = select.value;
+  const historical = Boolean(team) && demoState.value === "historical";
+  catalogue = catalogueFor(team);
+  built.clear();
+  renderCloud.weights = weightsFor(team, historical);
+  // Areas the team answered last time start picked, so returning teams only review them.
+  picked = historical ? catalogue.filter((a) => demand.some((r) => r.quarter === lastAnswered && r.team === team && areaKey(r) === weightKey(a))).map((a) => a.id) : [];
+  search.value = "";
+  renderCloud();
+  renderPicked();
+}
+for (const el of [select, demoState]) el.addEventListener("change", reset);
+search.addEventListener("input", renderCloud);
+search.addEventListener("keydown", (ev) => {
+  if (ev.key !== "Enter") return;
+  ev.preventDefault();
+  const shown = catalogue.filter((a) => matches(a.name, search.value));
+  if (shown.length === 1 && search.value.trim()) {
+    if (!picked.includes(shown[0].id)) toggle(shown[0].id);
+    search.value = "";
+    renderCloud();
+  } else if (!shown.length) addCustom();
+});
+addButton.addEventListener("click", addCustom);
+reset();
 
 form.addEventListener("submit", (ev) => {
   ev.preventDefault();
-  const rows = rowsFor(form, select.value, domainOf.get(projectOf.get(select.value)) ?? "");
+  const rows = rowsFor(form, select.value);
   document.getElementById("rows").textContent = rows.length ? toCsv(rows) : "No areas answered.";
   document.getElementById("result").hidden = false;
 });

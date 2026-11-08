@@ -6,11 +6,12 @@ Target effort: about ten minutes. Most teams answer for three to five areas of e
 
 ## Structure
 
-Built as a Google Form.
+Built as a custom page (`public/survey.html`): Google Forms can't show questions only for areas picked earlier.
 
 1. **Team.** Dropdown of project and team, taken from the staffing list.
-2. **One section per expertise**, in a fixed order, each with one grid. Neither question is required. An expertise the team doesn't need is simply left blank.
-3. **Domain expertise ({domain})**, a section like the others whose domain is prefilled from the project's domain, which the discipline head maps once. A project working in two domains gets two such sections. Leads never type a domain.
+2. **Pick the areas.** A word cloud of every area of expertise: the standard ones, the project's domain, and any area a team has added before. Word size is a best guess at relevance to this team, from its last answers, its booked time and its members' ratings, with discipline-wide demand as a tiebreak (`src/cloud.js`). Leads can search, and add an area that isn't there. Areas answered last quarter start picked.
+3. **One section per picked area**, in picking order, each with one grid. Areas the team doesn't need never appear, so nothing is skipped. Each section also has two optional free-text fields: **what specifically** within the area (tools, frameworks, sub-areas) and a **comment** for nuance the grid can't hold.
+4. **Domain expertise ({domain})** is offered in the cloud like the others, taken from the project's domain, which the discipline head maps once.
 
 ## Questions per expertise
 
@@ -91,6 +92,8 @@ Each answered grid row becomes one row in the **Project Demand** tab (`data/proj
 | people | Question 1: 1, 2, 3, 5, or platform |
 | coverage | The row's coverage: critical, under, adequate, over |
 | support | Which support the team also draws on, if ticked: platform, legal or cop |
+| specifics | The area's "what specifically" text, repeated on each of its rows |
+| comment | The area's comment, repeated on each of its rows |
 
 Headcount is on a Fibonacci scale, 1, 2, 3 or 5, so every answer is an exact number of people and nothing is fractional. Leads never see these numbers. A **From the platform team** answer is left out of the team's own demand. It counts as a quarter of a person of load on the platform team instead.
 

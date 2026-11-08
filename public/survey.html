@@ -59,6 +59,16 @@
       tr.groups .cov { grid-column: 2 / 6; }
       tr.groups th:first-child { display: none; }
     }
+    input[type="search"], input[type="text"] { font: inherit; width: 100%; box-sizing: border-box; padding: 0.4rem; }
+    .cloud { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 0.4rem 0.9rem; padding: 1rem 0; min-height: 6rem; }
+    .cloud button { background: none; color: var(--accent); padding: 0.1rem 0.5rem; border: 1px solid transparent; border-radius: 999px; line-height: 1.2; }
+    .cloud button:hover { border-color: var(--line); }
+    .cloud button[aria-pressed="true"] { background: var(--accent); color: #fff; }
+    .cloud button[title]:not([title=""]) { font-style: italic; }
+    button.secondary { background: #fff; color: var(--accent); border: 1px solid var(--accent); }
+    div.nuance { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-top: 0.75rem; }
+    label.nuance span { display: block; font-size: 0.85rem; color: var(--muted); margin-bottom: 0.2rem; }
+    @media (max-width: 44rem) { div.nuance { grid-template-columns: 1fr; } }
     .page-link { margin: 0 0 0.5rem; font-size: 0.9rem; }
     pre { overflow-x: auto; background: #f1f3f4; padding: 0.75rem; font-size: 0.8rem; }
   </style>
@@ -72,7 +82,7 @@
       <p>Every quarter, each team tells us what engineering work it needs and how the quarter looks with the people it has. It takes about ten minutes. We never ask about named people.</p>
       <p>The answers show where the discipline is short or has more than it needs, where to grow people, and who could help whom. Marking a row "over" is how other teams get help, and how yours gets help next time. It starts a conversation with you. Nobody is moved without one.</p>
       <h3>How to answer</h3>
-      <p><strong>Answer only the areas your team needs.</strong> Leave everything else on "Not needed".</p>
+      <p><strong>First pick the areas your team needs.</strong> Only those get questions, so there is nothing to skip. Add a short note on what exactly you need in each, and a comment wherever the grid can't say it.</p>
       <p><strong>How many people need to work this way?</strong> Count people, not time. The same person can count in several areas. Pick the closest of 1, 2, 3 or 5.</p>
       <p><strong>Critical, under, adequate, over:</strong> for each working method you need, is it covered on your team today? Critical means the gap blocks delivery or breaches an obligation.</p>
       <p><strong>Also from…</strong> Tick where you expect to draw on a team or community: the platform team, the legal and IT security team, or a community of practice. It is in addition to the people your team needs, not instead of them.</p>
@@ -96,6 +106,13 @@
       <section>
         <h2 id="team-heading">Your team</h2>
         <select id="team" name="team" required aria-labelledby="team-heading"><option value="">Choose your project and team</option></select>
+      </section>
+      <section>
+        <h2 id="pick-heading">Which areas does your team need?</h2>
+        <p class="muted">Pick every area your team needs next quarter. Bigger words are our best guess from your last answers, booked time and ratings. Can't find it? Type it and add it as a new area.</p>
+        <input id="area-search" type="search" placeholder="Search or add an area" aria-label="Search or add an area of expertise" autocomplete="off">
+        <div id="cloud" class="cloud" role="group" aria-labelledby="pick-heading"></div>
+        <button id="add-area" type="button" class="secondary" hidden></button>
       </section>
       <div id="areas"></div>
       <section>

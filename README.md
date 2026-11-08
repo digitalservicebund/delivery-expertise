@@ -24,7 +24,7 @@ Five CSV files in `data/`: the project survey, assessments, activity, the discip
 
 | File | Source | Columns |
 |---|---|---|
-| `project-demand.csv` | The mandatory [project survey](docs/project-survey.md), one row per answered grid row | team, expertise, domain, method, people, coverage, support |
+| `project-demand.csv` | The mandatory [project survey](docs/project-survey.md), one row per answered grid row | team, expertise, domain, method, people, coverage, support, specifics, comment |
 | `expertise-assessments.csv` | Individual ratings: self-assessment, any number of peer reviews, and the person's project or tech lead | respondent (pseudonym), expertise, domain, assessor (self / peer / lead), level (1–6) |
 | `historical-activity.csv` | Logged project activity | team, expertise, domain, method demonstrated, person_days |
 | `staffing.csv` | Staffing export, one row per engineer per quarter | person (same pseudonym as respondent), project, team, level, role (tech-lead / engineer), people_lead |
