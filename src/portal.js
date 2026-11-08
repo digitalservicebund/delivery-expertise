@@ -133,7 +133,6 @@ async function setUpIcForm(config, t) {
 const bucketBox = document.getElementById("buckets");
 const bucketStatus = bucketBox.querySelector("output");
 const [askButton, previewButton, applyButton] = ["ask", "preview", "apply"].map((k) => document.getElementById(`buckets-${k}`));
-const questionBox = document.getElementById("buckets-question");
 const answerBox = document.getElementById("buckets-answer");
 const el = (tag, text) => Object.assign(document.createElement(tag), { textContent: text ?? "" });
 const listOf = (lines) => { const ul = el("ul"); ul.append(...lines.map((l) => el("li", l))); return ul; };
@@ -165,7 +164,7 @@ async function showBuckets(config, t) {
       ? `${ungrouped.length} area${ungrouped.length > 1 ? "s aren't" : " isn't"} in a bucket yet: ${ungrouped.join(", ")}. Ask Gemini to regroup.`
       : "The grouping is more than a quarter old. Ask Gemini to regroup, to see whether it still fits.";
   const { groups, generatedAt } = readBuckets(current);
-  questionBox.value = bucketPrompt(areas, groups);
+  bucketState.prompt = bucketPrompt(areas, groups);
   askButton.disabled = false;
   document.getElementById("buckets-current").replaceChildren(...(groups.length
     ? [el("p", `Current buckets${generatedAt ? `, grouped ${generatedAt.slice(0, 10)}` : ""}:`), bucketList(groups)]
@@ -175,10 +174,16 @@ async function showBuckets(config, t) {
 // Copies the prompt and opens Gemini, both straight from the click: browsers allow clipboard writes and new tabs
 // only then. The admin's own Gemini, signed in with their own account; nothing goes through this app.
 askButton.addEventListener("click", () => {
-  const text = questionBox.value;
-  navigator.clipboard?.writeText(text).then(
+  const text = bucketState.prompt;
+  // Without clipboard access, the prompt is shown on the page to copy by hand.
+  const showPrompt = () => {
+    bucketStatus.replaceChildren("Couldn't copy the prompt. Copy it from here into Gemini, then paste Gemini's answer below:");
+    document.getElementById("buckets-proposed").replaceChildren(el("pre", text));
+  };
+  if (!navigator.clipboard) showPrompt();
+  else navigator.clipboard.writeText(text).then(
     () => bucketStatus.replaceChildren("Prompt copied. Paste it into Gemini, then paste Gemini's answer below."),
-    () => bucketStatus.replaceChildren("Couldn't copy the prompt: copy it from “The prompt” below."),
+    showPrompt,
   );
   window.open("https://gemini.google.com/app", "_blank", "noopener");
 });
