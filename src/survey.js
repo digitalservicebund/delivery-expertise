@@ -167,6 +167,8 @@ function explain(hint, coverageLines) {
 // Only the areas the team picked have sections, so nothing else can produce rows.
 function rowsFor(form, team) {
   const rows = [];
+  // "Anything we should know?" is about the whole submission, so every row carries it.
+  const notes = form.elements.notes.value.trim();
   for (const section of document.querySelectorAll("#areas [data-area]")) {
     const { id, expertise, domain } = section.dataset;
     const specifics = form.elements[`${id}-specifics`].value.trim();
@@ -187,6 +189,7 @@ function rowsFor(form, team) {
         support: support ? SUPPORT_KEY[section.dataset.support] ?? "" : "",
         specifics,
         comment,
+        notes,
       });
     }
   }

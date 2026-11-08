@@ -1,7 +1,7 @@
 // Google sign-in and Sheets API calls, entirely in the browser, as the signed-in person.
 // Uses Google Identity Services' token model: a short-lived access token, no refresh token, no client secret.
 // The only scope is drive.file: the app reaches only files the person has handed to it once in Google Picker.
-import { rowsFromValues, valuesFromRows, tabRange } from "./sheets.js";
+import { rowsFromValues, valuesFromRows, tabRange, headerUpdate } from "./sheets.js";
 
 const API = "https://sheets.googleapis.com/v4/spreadsheets";
 export const SCOPE = "https://www.googleapis.com/auth/drive.file";
@@ -167,7 +167,7 @@ async function addTabs(accessToken, sheetId, tabs) {
 }
 
 // Sets up tabs without losing data. layout: tab -> { header } or { formula }.
-// A header goes in only where row 1 is empty, so answers already collected are never touched.
+// A header goes in only where row 1 is empty or holds the start of it, so answers already collected are never touched.
 // A formula always replaces A1: it holds nothing but the formula. Returns a line per tab saying what happened.
 export async function setUpTabs(accessToken, sheetId, layout) {
   const created = await addTabs(accessToken, sheetId, Object.keys(layout));
@@ -180,14 +180,9 @@ export async function setUpTabs(accessToken, sheetId, layout) {
       continue;
     }
     const { values = [] } = await call(accessToken, `${API}/${sheetId}/values/${encodeURIComponent(`${tabRange(tab)}!1:1`)}`);
-    const current = (values[0] ?? []).map(String);
-    if (!current.length) {
-      writes.push({ range: `${tabRange(tab)}!A1`, values: [spec.header] });
-      notes.push(`${tab}: header added`);
-    } else {
-      const same = current.join() === spec.header.join();
-      notes.push(`${tab}: ${same ? "already set up" : `has a different header, left as it is (expected ${spec.header.join(", ")})`}`);
-    }
+    const update = headerUpdate((values[0] ?? []).map(String), spec.header);
+    if (update.values) writes.push({ range: `${tabRange(tab)}!${update.cell}`, values: [update.values] });
+    notes.push(`${tab}: ${update.note}`);
   }
   if (writes.length) {
     await call(accessToken, `${API}/${sheetId}/values:batchUpdate`, {

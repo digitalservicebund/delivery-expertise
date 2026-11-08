@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { rowsFromValues, valuesFromRows, tabRange, liveLayout, DEMAND_HEADER, latestSubmissions } from "../src/sheets.js";
+import { rowsFromValues, valuesFromRows, tabRange, liveLayout, DEMAND_HEADER, latestSubmissions, headerUpdate } from "../src/sheets.js";
 
 test("only each team's latest submission per quarter counts", () => {
   const row = (team, quarter, at, method) => ({ team, quarter, submitted_at: at, method });
@@ -15,6 +15,18 @@ test("only each team's latest submission per quarter counts", () => {
     ["A 2027-Q1 strategic", "A 2026-Q4 operative", "B 2027-Q1 operative"]);
 });
 
+test("demand keeps the survey's notes last, so earlier columns keep their place", () => {
+  assert.deepEqual(DEMAND_HEADER.slice(-3), ["submitted_by", "submitted_at", "notes"]);
+});
+
+test("a header that starts the expected one is extended; any other header is left alone", () => {
+  assert.deepEqual(headerUpdate([], ["a", "b"]), { cell: "A1", values: ["a", "b"], note: "header added" });
+  assert.deepEqual(headerUpdate(["a"], ["a", "b", "c"]), { cell: "B1", values: ["b", "c"], note: "header extended with b, c" });
+  assert.deepEqual(headerUpdate(["a", "b"], ["a", "b"]), { note: "already set up" });
+  assert.match(headerUpdate(["x"], ["a", "b"]).note, /different header, left as it is/);
+  assert.equal(headerUpdate(["x"], ["a", "b"]).values, undefined);
+});
+
 test("the aggregate sheet imports the survey sheets without emails or comments", () => {
   const layout = liveLayout({ projects: "P", discipline: "D" });
   assert.deepEqual(layout.projects.demand.header, DEMAND_HEADER);
@@ -25,7 +37,7 @@ test("the aggregate sheet imports the survey sheets without emails or comments",
   assert.equal(layout.discipline.staffing.header[0], "Email");
   assert.ok(!("teams" in layout.aggregate));
   assert.equal(layout.aggregate.demand.formula,
-    '=QUERY(IMPORTRANGE("P", "demand!A:L"), "select Col1, Col2, Col3, Col4, Col5, Col6, Col7, Col8, Col9, Col12 where Col1 is not null", 1)');
+    '=QUERY(IMPORTRANGE("P", "demand!A:M"), "select Col1, Col2, Col3, Col4, Col5, Col6, Col7, Col8, Col9, Col12 where Col1 is not null", 1)');
   assert.equal(layout.aggregate.plan.formula,
     '=QUERY(IMPORTRANGE("D", "plan!A:H"), "select Col1, Col2, Col3, Col4, Col5, Col6, Col8 where Col1 is not null", 1)');
 });

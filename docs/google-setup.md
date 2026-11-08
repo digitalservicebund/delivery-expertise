@@ -44,14 +44,14 @@ The Picker needs an API key (`pickerKey` in the config). It identifies the proje
 
 The portal's set-up panel (**Load dummy data**, **Set up live sheets**, **Set up IC form**) is shown only to discipline heads: whoever Google says may edit the discipline sheet, which is its owner and anyone it's shared with for editing. There is no list to maintain. A discipline head clicks **Sign in to set up the sheets** once. The first time, the Picker asks for the discipline sheet, and after that the check runs quietly on every visit. Hiding the panel is a convenience: what each action may do is still decided by the sheets' own sharing.
 
-The portal's **Set up live sheets** button does the next three sections' tab work for you: it creates the `demand` and `plan` tabs with their header rows, and the aggregate sheet's `demand` and `plan` tabs with their imports. It is safe to run again. It only adds a header to an empty row 1, and leaves a different existing header alone, saying so. Google allows no one to approve an `IMPORTRANGE` through the API, so afterwards open the aggregate sheet and click **Allow access** once per source sheet. It also writes the aggregate `supply` tab, once the IC form is linked to the IC responses sheet. Until then it skips `supply` and says so.
+The portal's **Set up live sheets** button does the next three sections' tab work for you: it creates the `demand` and `plan` tabs with their header rows, and the aggregate sheet's `demand` and `plan` tabs with their imports. It is safe to run again. It only adds a header to an empty row 1, or the missing columns to a header that holds the start of it (as when a column was added later), and leaves a different existing header alone, saying so. Google allows no one to approve an `IMPORTRANGE` through the API, so afterwards open the aggregate sheet and click **Allow access** once per source sheet. It also writes the aggregate `supply` tab, once the IC form is linked to the IC responses sheet. Until then it skips `supply` and says so.
 
 ## Projects sheet
 
 One tab, `demand`, with this header row. The survey only ever appends rows. A team's latest submission for a quarter replaces its earlier ones, by `submitted_at`.
 
 ```
-quarter | team | expertise | domain | method | people | coverage | support | specifics | comment | submitted_by | submitted_at
+quarter | team | expertise | domain | method | people | coverage | support | specifics | comment | submitted_by | submitted_at | notes
 ```
 
 Everyone with access can read and change every team's rows. That is accepted. Version history shows who changed what.
@@ -106,10 +106,10 @@ Every tab is a single formula. Raw IC rows never land in a cell: they stay insid
 
 The first time each `IMPORTRANGE` source is used, the sheet's owner must click **Allow access** once. The owner needs access to every source, so the discipline head should own it.
 
-**`demand` and `plan`** copy the projects and discipline sheets row by row, without `submitted_by` and `comment`. The aggregate sheet is readable by everyone at DigitalService, a wider audience than the survey sheets, so emails and free text that may name people stay out.
+**`demand` and `plan`** copy the projects and discipline sheets row by row, without `submitted_by`, `comment` and `notes`. The aggregate sheet is readable by everyone at DigitalService, a wider audience than the survey sheets, so emails and free text that may name people stay out.
 
 ```
-=QUERY(IMPORTRANGE("<projects sheet id>", "demand!A:L"), "select Col1, Col2, Col3, Col4, Col5, Col6, Col7, Col8, Col9, Col12 where Col1 is not null", 1)
+=QUERY(IMPORTRANGE("<projects sheet id>", "demand!A:M"), "select Col1, Col2, Col3, Col4, Col5, Col6, Col7, Col8, Col9, Col12 where Col1 is not null", 1)
 =QUERY(IMPORTRANGE("<discipline sheet id>", "plan!A:H"), "select Col1, Col2, Col3, Col4, Col5, Col6, Col8 where Col1 is not null", 1)
 ```
 

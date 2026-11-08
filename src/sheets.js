@@ -25,12 +25,26 @@ export function latestSubmissions(rows) {
 }
 
 // The live sheets' tabs. Survey sheets get header rows. The aggregate sheet gets one import formula per tab.
-export const DEMAND_HEADER = ["quarter", "team", "expertise", "domain", "method", "people", "coverage", "support", "specifics", "comment", "submitted_by", "submitted_at"];
+export const DEMAND_HEADER = ["quarter", "team", "expertise", "domain", "method", "people", "coverage", "support", "specifics", "comment", "submitted_by", "submitted_at", "notes"];
+// notes ("Anything we should know?") is for the whole submission, so it repeats on each of its rows.
+// It comes last so the columns before it keep their place in sheets set up before it existed.
 export const PLAN_HEADER = ["quarter", "kind", "subject", "method", "value", "reason", "submitted_by", "submitted_at"];
 const lastColumn = (header) => String.fromCharCode(64 + header.length); // fine up to 26 columns
 // The aggregate sheet is readable by everyone at DigitalService, a wider audience than the survey sheets.
 // So the import leaves out who submitted (an email) and free-text comments, which may name people.
-const NOT_SHARED = new Set(["submitted_by", "comment"]);
+const NOT_SHARED = new Set(["submitted_by", "comment", "notes"]);
+
+// What to write to row 1 of a survey tab. Empty: the whole header. The start of the expected header, as in a
+// sheet set up before a column was added: just the missing cells. Anything else is someone's and stays.
+export function headerUpdate(current, header) {
+  if (!current.length) return { cell: "A1", values: header, note: "header added" };
+  if (current.join() === header.join()) return { note: "already set up" };
+  if (current.length < header.length && current.every((h, i) => h === header[i])) {
+    const missing = header.slice(current.length);
+    return { cell: `${lastColumn([...current, ""])}1`, values: missing, note: `header extended with ${missing.join(", ")}` };
+  }
+  return { note: `has a different header, left as it is (expected ${header.join(", ")})` };
+}
 export function liveLayout(sheets) {
   const importOf = (id, tab, header) => {
     const cols = header.flatMap((h, i) => (NOT_SHARED.has(h) ? [] : [`Col${i + 1}`])).join(", ");
