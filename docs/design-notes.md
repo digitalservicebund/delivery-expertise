@@ -56,7 +56,7 @@ We went through roughly a dozen designs. The lessons matter more than the sequen
 - **Missing data is not a gap.** When people data is too thin, the circle trusts the project's answer and fills from it. A ✅ marks circles the people data has verified.
 - **Domain knowledge is not comparable with technical skills.** Domains such as Legislation or Family and welfare have their own smaller chart, with one spoke per domain.
 - **Leadership is a role, not an expertise.** Tech leadership and people leadership first sat on the main chart as dashed spokes. They distorted it, but they are not like domains either: they have no sub-areas. We tried a strip of team tiles and load bars, then two small pies of positions filled. Both took explaining. The layout that stuck is one straight line per role, a radial spoke straightened out, beneath the domain chart. Each line carries the same circles as the radials at levels 4, 5 and 6. Leadership is never needed at operative level, so that position was dropped.
-- **Leadership demand is derived, not asked.** Tech leadership needs one lead per project team. Small teams need conceptual leadership and larger ones strategic, unless the discipline head sets otherwise. People leadership follows headcount at the discipline head's ratio per level. It covers the whole discipline, so it only shows without a team filter.
+- **Leadership demand is derived, not asked.** Tech leadership needs one lead per project team: conceptual for teams of up to three people, strategic for four and more. An engagement with several teams also needs one comprehensive engagement lead on top, covered by a tech lead who is also in its project leadership team. A lead at the level the working method needs shows as well covered, one below it as covered but fragile. The discipline head can set otherwise. People leadership follows headcount at the discipline head's ratio per level. It covers the whole discipline, so it only shows without a team filter.
 
 ## Two audiences, one dataset
 
@@ -98,4 +98,4 @@ A switch on the header's second row moves between the two audiences. The discipl
 - Decide who besides discipline heads may filter to team level.
 - Decide whether engineers should see how their lead and peers rated them, or only the combined result.
 - Decide whether engineers should see their own position on the leadership lines, as they do on the expertise spokes.
-- Check that the tech-lead default, conceptual up to four people and strategic above, matches how the discipline staffs leads.
+- Check that the tech-lead defaults (conceptual up to three people, strategic from four, plus a comprehensive engagement lead for multi-team engagements) match how the discipline staffs leads.

@@ -90,6 +90,15 @@ staffing.forEach((row, i) => {
 for (const team of teams.values()) {
   if (team.demands) [...team.people].sort((a, b) => b.level - a.level)[0].role = "tech-lead";
 }
+// Engagements with several teams also need an engagement lead: their most senior tech lead. Every third such
+// engagement goes without, so the prototype shows the gap too.
+[...Map.groupBy([...teams.values()].filter((t) => t.demands), (t) => t.project)]
+  .filter(([, ts]) => ts.length > 1)
+  .forEach(([, ts], i) => {
+    if (i % 3 === 2) return;
+    const leads = ts.flatMap((t) => t.people.filter((p) => p.role === "tech-lead"));
+    leads.sort((a, b) => b.level - a.level)[0].engagementLead = true;
+  });
 {
   const everyone = [...teams.values()].flatMap((t) => t.people.map((p) => Object.assign(p, { home: t.name })));
   const leads = [...everyone].sort((a, b) => b.level - a.level || a.id.localeCompare(b.id)).slice(0, Math.ceil(everyone.length / 6));
@@ -302,6 +311,7 @@ const staffingRows = QUARTERS.flatMap((quarter, qi) =>
     level: p.level,
     role: p.role === "tech-lead" && p.teamAt[qi] === p.home ? "tech-lead" : "engineer",
     people_lead: p.peopleLead,
+    engagement_lead: p.engagementLead && p.teamAt[qi] === p.home ? "yes" : "",
   })));
 
 // The discipline head's quarterly plan, layered on top of the project survey.

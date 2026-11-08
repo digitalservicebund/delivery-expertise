@@ -222,6 +222,45 @@ test("tech leadership demand is derived from staffing roles", () => {
   assert.deepEqual(lead.teams.map((t) => t.coverage), ["adequate", "under"]); // U has no tech lead
 });
 
+test("tech lead method follows team size, and multi-team engagements also need a comprehensive engagement lead", () => {
+  const person = (id, project, team, o = {}) => ({ quarter: "2026-Q1", person: id, project, team: `${project} / ${team}`, ...o });
+  const staffing = [
+    person("a1", "P", "A", { role: "tech-lead" }), person("a2", "P", "A"), person("a3", "P", "A"), person("a4", "P", "A"),
+    person("b1", "P", "B", { role: "tech-lead" }), person("b2", "P", "B"),
+    person("c1", "Q", "C", { role: "tech-lead" }), person("c2", "Q", "C"), person("c3", "Q", "C"),
+  ];
+  const demand = ["P / A", "P / B", "Q / C"].map((team) => ask("operative", "1", "adequate", { team }));
+  const leadAt = (m, level) => m.expertise.find((e) => e.name === TECH_LEAD).current.levels.find((l) => l.level === level);
+  const m = buildModel({ demand, assessments: [], activity: [], staffing });
+  assert.deepEqual(leadAt(m, 4).teams.map((t) => t.team).sort(), ["P / B", "Q / C"]); // up to 3 people: conceptual
+  assert.deepEqual(leadAt(m, 5).teams.map((t) => t.team), ["P / A"]); // 4 and more: strategic
+  // P has two teams: one comprehensive engagement lead on top, uncovered without a tech lead in its leadership team.
+  assert.deepEqual(leadAt(m, 6).teams.map((t) => [t.team, t.coverage]), [["P / Engagement", "under"]]);
+
+  staffing[0].engagement_lead = "yes";
+  const covered = buildModel({ demand, assessments: [], activity: [], staffing });
+  assert.deepEqual(leadAt(covered, 6).teams.map((t) => t.coverage), ["adequate"]);
+  // The engagement lead belongs to the engagement: a project filter shows it, a team filter doesn't.
+  const teamOnly = buildModel({ demand, assessments: [], activity: [], staffing }, (t) => t === "P / A");
+  assert.equal(leadAt(teamOnly, 6).demand, 0);
+});
+
+test("a tech lead at the level needed is well covered; one below it only covered but fragile", () => {
+  const person = (id, team, o = {}) => ({ quarter: "2026-Q1", person: id, project: "P", team: `P / ${team}`, ...o });
+  const staffing = [
+    person("a1", "A", { role: "tech-lead", level: "5", engagement_lead: "yes" }), person("a2", "A"), person("a3", "A"), person("a4", "A"),
+    person("b1", "B", { role: "tech-lead", level: "4" }), person("b2", "B"),
+    person("c1", "C", { role: "tech-lead", level: "" }),
+  ];
+  const demand = ["P / A", "P / B", "P / C"].map((team) => ask("operative", "1", "adequate", { team }));
+  const lead = buildModel({ demand, assessments: [], activity: [], staffing }).expertise.find((e) => e.name === TECH_LEAD).current;
+  const status = (level) => lead.levels.find((l) => l.level === level).teams.map((t) => [t.team, t.status]);
+  assert.deepEqual(status(4).sort(), [["P / B", "covered"], ["P / C", "covered"]]); // level 4 meets conceptual; no level known: trusted
+  assert.deepEqual(status(5), [["P / A", "covered"]]);
+  assert.deepEqual(status(6), [["P / Engagement", "fragile"]]); // the engagement lead is level 5, comprehensive needs 6
+  assert.ok(!lead.notes.some((n) => n.text.includes("P / Engagement")));
+});
+
 test("the discipline plan adds and removes demand, only without a filter", () => {
   const plan = [
     { quarter: "2026-Q1", kind: "adjust", subject: "X", method: "operative", value: -1, reason: "Winding down" },

@@ -29,14 +29,14 @@ How adjustments show in the tool:
 
 ## 2. Tech lead targets
 
-Every project team needs one tech lead. By default the tool expects a conceptual tech lead for teams of up to four people and a strategic one for larger teams. Here the discipline head overrides that for teams whose need differs, for example a comprehensive tech lead on a multi-team product.
+Every project team needs one tech lead. By default the tool expects a conceptual tech lead for teams of up to three people and a strategic one for teams of four and more. An engagement with several teams also needs a comprehensive engagement lead, booked to `<project> / Engagement` and covered by a tech lead who is also in its project leadership team. Here the discipline head overrides any of these where the need differs.
 
 | Team | Working method needed |
 |---|---|
 
 Tech leadership is then charted on its own line, with the same logic as an expertise:
 - **Demand:** one person per project team, at the working method set here.
-- **Project half:** whether the staffing export shows a tech lead on the team. A team without one counts as "milestone will slip".
+- **Project half:** whether the staffing export shows a tech lead on the team, at the level the working method needs (conceptual 4, strategic 5, comprehensive 6). A lead at that level makes it well covered, a lead below it only covered but fragile, and no lead undersupplied. A lead whose level the export leaves blank is trusted.
 - **People half:** individual ratings in tech leadership, from self, peers and leads.
 
 ## 3. People leadership ratios

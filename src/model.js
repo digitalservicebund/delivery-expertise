@@ -222,7 +222,8 @@ function readTeams(demandRows, ratingsOf, isFresh) {
     const fresh = isFresh(team);
     const cover = fresh ? assessedCoverage(demand, ratingsOf(team)) : null;
     for (const l of LEVELS.filter((l) => demand[l])) {
-      const colour = rowStatus(rowAt[l], demand[l]);
+      // A derived row may set its colour outright, such as a tech lead at the right level: well covered, not fragile.
+      const colour = atLevel(rows, l).find((r) => r.status)?.status ?? rowStatus(rowAt[l], demand[l]);
       teamsAt[l].push({ team, demand: demand[l], coverage: rowAt[l], status: colour, fresh });
       if (rowAt[l] === "over") {
         share[l].push(team);
@@ -375,6 +376,41 @@ function summariseQuarter({ demandRows, planned = {}, ratings, ratingsOf, isFres
   };
 }
 
+// The pseudo-team an engagement-wide requirement is booked to: "<project> / Engagement". It sits under the
+// project, so a project filter includes it, while a team filter leaves it out.
+export const ENGAGEMENT = "Engagement";
+
+// Tech leadership for one quarter, one row per requirement:
+//   every team that answered the survey needs one tech lead: conceptual for up to 3 people, strategic for 4 and more
+//   an engagement with several teams also needs one comprehensive engagement lead, on top of the team leads
+// The discipline head's targets (subject: team, or "<project> / Engagement") override the method.
+// A team is covered when someone on it has the tech-lead role; an engagement when someone on it is flagged as its
+// engagement lead (in live data: a tech lead who is also in the project leadership team). A lead at the level the
+// working method needs makes it well covered; one below that level only covered but fragile. A lead without a
+// known level is trusted. No lead: undersupplied.
+function techLeadDemand(quarter, staffed, demanding, targets) {
+  const row = (team, method, leads) => {
+    const level = METHODS[method];
+    const known = leads.map((r) => Number(r.level)).filter((l) => l > 0);
+    const below = known.length === leads.length && Math.max(...known) < level;
+    const status = leads.length ? (below ? "fragile" : "covered") : undefined;
+    return { quarter, team, expertise: TECH_LEAD, method, people: "1", level, quantity: 1, coverage: leads.length ? "adequate" : "under", status };
+  };
+  const teamRows = [...demanding].map((team) => {
+    const members = staffed.filter((r) => r.team === team);
+    return row(team, targets.get(team) ?? (members.length <= 3 ? "conceptual" : "strategic"), members.filter((r) => r.role === "tech-lead"));
+  });
+  const projectOf = new Map(staffed.map((r) => [r.team, r.project]));
+  const engaged = [...new Set([...demanding].map((team) => projectOf.get(team)).filter(Boolean))];
+  const engagementRows = engaged
+    .filter((project) => new Set(staffed.filter((r) => r.project === project).map((r) => r.team)).size > 1)
+    .map((project) => {
+      const team = `${project} / ${ENGAGEMENT}`;
+      return row(team, targets.get(team) ?? "comprehensive", staffed.filter((r) => r.project === project && r.engagement_lead));
+    });
+  return [...teamRows, ...engagementRows];
+}
+
 // data: { demand, assessments, activity, staffing, plan }.
 //   staffing  one row per engineer and quarter: person, project, team, and optionally level, role, people_lead
 //   plan      the discipline head's survey: strategic adjustments, tech lead targets, people leadership ratios
@@ -397,19 +433,11 @@ export function buildModel({ demand: answers, assessments, activity: logged, sta
   const unfiltered = !roster.some((r) => !inScope(r.team));
   const planOf = (q, kind) => plan.filter((r) => r.quarter === q && r.kind === kind);
 
-  // Tech leadership: one per project team, needed at the working method the discipline head sets for the team,
-  // or by default conceptual for teams of up to four and strategic for larger ones. Covered when the staffing
-  // shows a tech lead on the team. Only derived when the staffing export carries roles.
-  const techLeads = !staffing.some((r) => r.role) ? [] : quarters.flatMap((q) => {
-    const staffed = rosterAt(q);
-    const targets = new Map(planOf(q, "tech-lead").map((r) => [r.subject, r.method]));
-    return [...new Set(translated.filter((r) => r.quarter === q).map((r) => r.team))].map((team) => {
-      const members = staffed.filter((r) => r.team === team);
-      const method = targets.get(team) ?? (members.length <= 4 ? "conceptual" : "strategic");
-      const led = members.some((r) => r.role === "tech-lead");
-      return { quarter: q, team, expertise: TECH_LEAD, method, people: "1", level: METHODS[method], quantity: 1, coverage: led ? "adequate" : "under" };
-    });
-  });
+  // Tech leadership, derived from the staffing: see techLeadDemand. Only when the staffing export carries roles.
+  const techLeads = !staffing.some((r) => r.role) ? [] : quarters.flatMap((q) => techLeadDemand(
+    q, rosterAt(q), new Set(translated.filter((r) => r.quarter === q).map((r) => r.team)),
+    new Map(planOf(q, "tech-lead").map((r) => [r.subject, r.method])),
+  ));
   const demand = [...translated, ...techLeads];
   const headcount = scoped(roster).length;
   const of = (rows, q, e) => rows.filter((r) => r.quarter === q && r.expertise === e);
