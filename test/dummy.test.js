@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { parseCsv } from "../src/csv.js";
 import { generateDummyData } from "../src/dummy.js";
 import { STAFFING_HEADER } from "../src/teams.js";
+import { AREA_NAMES } from "../src/areas.js";
 
 // A snapshot as ds-staffing exports it: byte-order mark, semicolons, several roles in one quoted field.
 const line = (email, first, level, engagement, team, department, status) =>
@@ -43,4 +44,14 @@ test("the same snapshot always gives the same dummy data", () => {
 
 test("a snapshot without active engineers is refused", () => {
   assert.throws(() => generateDummyData([]), /no active Engineering rows/);
+});
+
+test("teams also answer for areas they added themselves, with what they need there, so there is something to group", () => {
+  const tabs = generateDummyData(parseCsv(snapshot, ";"));
+  const custom = tabs["project-demand"].filter((r) => !AREA_NAMES.includes(r.expertise) && r.expertise !== "Domain expertise");
+  assert.ok(new Set(custom.map((r) => r.expertise)).size >= 3, "several added areas");
+  assert.ok(custom.every((r) => r.specifics), "added areas say what they need");
+  // People on those teams rate themselves in them too, so a grouping changes supply as well as demand.
+  const rated = new Set(tabs["expertise-assessments"].map((r) => r.expertise));
+  assert.ok(custom.some((r) => rated.has(r.expertise)));
 });

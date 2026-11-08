@@ -41,7 +41,24 @@ const AFFINITY = [
   [/valid/i, ["Quality & Documentation"]],
   [/./, ["Backend", "Frontend", "Quality & Documentation"]],
 ];
-const affinity = (name) => [...new Set(AFFINITY.filter(([re]) => re.test(name)).flatMap(([, xs]) => xs))].slice(0, 5);
+// Areas teams add themselves in the survey, beyond the standard ten, with what they need there. Each project team
+// adds a few at random, so the prototype has many free-text areas to group into buckets, in German and English.
+const ADDED_AREAS = [
+  ["Kubernetes", "Cluster operations on STACKIT"], ["Terraform", "Infrastructure as code for new environments"],
+  ["Observability", "Tracing and alerting with OpenTelemetry"], ["Postgres", "Query tuning and migrations"],
+  ["React", "Component library migration"], ["Vue", "Nuxt 4 upgrade"], ["Kotlin", "Spring Boot services"],
+  ["Rust", "Parser performance"], ["OpenAPI", "Contract-first API design"], ["Keycloak", "Single sign-on for ministry staff"],
+  ["Barrierefreiheit", "BITV 2.0 audit fixes"], ["Datenschutz", "DSFA and data retention"], ["UX research", "Usability tests with citizens"],
+  ["Penetration testing", "Preparing for the BSI audit"], ["LLM evaluation", "Evaluating answers against legal sources"],
+  ["Prompt engineering", "Retrieval prompts for case workers"], ["Domain-driven design", "Splitting the monolith along domains"],
+  ["Legacy migration", "Replacing a mainframe interface"], ["XÖV standards", "XJustiz message formats"],
+  ["E-Akte", "Integration with the federal e-file"], ["Elasticsearch", "Full-text search over legislation"],
+  ["Mobile apps", "Native wrapper for the citizen app"], ["Testautomatisierung", "Playwright end-to-end suite"],
+  ["Technical writing", "Developer documentation for partners"], ["FinOps", "Cloud cost reporting"],
+  ["Event streaming", "Kafka between agencies"], ["Open source", "Publishing code under EUPL"],
+  ["Performance", "Load tests before launch"], ["GraphQL", "API for the portal front end"], ["Python", "Data pipelines and notebooks"],
+];
+const affinity = (name) =>[...new Set(AFFINITY.filter(([re]) => re.test(name)).flatMap(([, xs]) => xs))].slice(0, 5);
 
 // Reseeded on every run, so each run gives the same data for the same snapshot.
 const seeded = () => {
@@ -95,7 +112,11 @@ export function generateDummyData(rows) {
       const domain = domainOf(row.Engagement);
       // A team's domain counts as one of its areas of expertise, right after its primary one.
       if (domain) expertise.splice(1, 0, `Domain:${domain}`);
-      teams.set(name, { name, project: row.Engagement, domain, demands: row["Engagement Type"] !== "Internal", expertise, people: [] });
+      const demands = row["Engagement Type"] !== "Internal";
+      // Added areas come last: a team's own additions are rarely its main need.
+      const added = new Set();
+      if (demands) for (let n = 2 + Math.floor(rng() * 3); added.size < n; ) added.add(pick(ADDED_AREAS)[0]);
+      teams.set(name, { name, project: row.Engagement, domain, demands, expertise: [...expertise, ...added], added, people: [] });
     }
     teams.get(name).people.push({ id: `R${String(i + 1).padStart(3, "0")}`, level: Number(row.Level) });
   });
@@ -150,6 +171,8 @@ export function generateDummyData(rows) {
       skills.set(e, clampRating(person.level + spike - Math.floor(i / 2) - Math.round(rng() * 1.2)));
     });
     for (const e of ALL_EXPERTISE) if (!skills.has(e) && rng() < 0.3) skills.set(e, clampRating(1 + Math.round(rng())));
+    // Most of a team know the areas it added, a little below their own level.
+    for (const e of team.added) if (rng() < 0.6) skills.set(e, clampRating(person.level - Math.round(rng() * 2)));
     // Deep domain knowledge takes time: only some of a team know its domain close to their own level.
     if (team.domain) skills.set(`Domain:${team.domain}`, clampRating(person.level - (rng() < 0.5 ? Math.round(rng()) : 2 + Math.round(rng()))));
     if (rng() < 0.25) {
@@ -229,7 +252,8 @@ export function generateDummyData(rows) {
         const coverage = leadCoverage(team, expertise, answered, rank, qi);
         for (const { level, people, support } of answered) {
           const line = { level };
-          demandRows.push({ quarter, team: team.name, ...keyed(expertise), method: METHODS[level - 3], people, coverage: coverage[level], support });
+          const specifics = ADDED_AREAS.find(([area]) => area === expertise)?.[1] ?? "";
+          demandRows.push({ quarter, team: team.name, ...keyed(expertise), method: METHODS[level - 3], people, coverage: coverage[level], support, specifics });
           if (COMPLETED.includes(quarter)) {
             // Leads tend to overstate need for Architecture; activity reveals it.
             const realism = expertise === "Architecture" ? 0.4 : 0.7 + rng() * 0.6;
