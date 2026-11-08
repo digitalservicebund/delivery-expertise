@@ -9,6 +9,27 @@ export const BUCKET_HEADER = ["area", "bucket", "generated_at"];
 // Where every former bucket went: its closest match in the current buckets. IC answers are stored per bucket
 // name, so this keeps older answers counted after a regrouping.
 export const HISTORY_HEADER = ["bucket", "now", "changed_at"];
+// One example of the work per working method, per bucket: what the project survey shows above each bucket's grid.
+export const EXAMPLE_HEADER = ["bucket", "operative", "conceptual", "strategic", "comprehensive"];
+const METHOD_COLUMNS = EXAMPLE_HEADER.slice(1);
+
+// The bucket-examples tab: bucket -> its four examples.
+export const readExamples = (rows) => new Map(rows.filter((r) => r.bucket?.trim()).map((r) => [r.bucket, METHOD_COLUMNS.map((c) => r[c] ?? "")]));
+
+// The buckets that lack any of their four examples, for the set-up to report.
+export function bucketsWithoutExamples(buckets, rows) {
+  const examples = readExamples(rows);
+  return buckets.filter((b) => !(examples.get(b) ?? []).filter(Boolean).length || examples.get(b).some((e) => !e));
+}
+
+// The bucket-examples tab after applying a regrouping (result: from compareBuckets; examples: by proposed name, from
+// parseBuckets, with the proposed groups). The result keeps their order, so each final name takes its group's.
+export function exampleRows(result, proposed, examples) {
+  return result.buckets.map((b, i) => {
+    const four = examples.get(proposed[i].name) ?? ["", "", "", ""];
+    return { bucket: b.name, ...Object.fromEntries(METHOD_COLUMNS.map((c, j) => [c, four[j] ?? ""])) };
+  });
+}
 // After this long, admins are nudged to regroup even without new areas: one survey round.
 const STALE_DAYS = 90;
 
@@ -140,21 +161,33 @@ export function bucketPrompt(areas, current) {
     ...areas.map((a) => `- ${a}`),
     ...(current.length ? ["", "Current buckets:", ...current.map((g) => `${g.name}: ${g.areas.join(", ")}`)] : []),
     "",
-    "Answer with one line per area, formatted as: area | bucket",
-    "Use the area names exactly as listed. No other text.",
+    "Answer in two parts. First, one line per area, formatted as: area | bucket",
+    "Use the area names exactly as listed.",
+    "",
+    "Then, for each bucket, one line with an example of the work at each working method, formatted as:",
+    "bucket | operative | conceptual | strategic | comprehensive",
+    "Operative: implementing, applying standard methods. Conceptual: planning, shaping and adapting methods. Strategic: setting guidelines, leading across teams. Comprehensive: shaping it across the wider government ecosystem.",
+    "Keep each example short, starting with a verb, for example: Build components to the design system.",
+    "No other text."
   ].join("\n");
 }
 
 // Reads the pasted answer back: one "area | bucket" per line, tolerating markdown tables, bold, code fences and
-// chatter. Area names match case-insensitively. Returns { groups, errors }; any error means don't apply it.
+// chatter, then "bucket | operative | conceptual | strategic | comprehensive" lines with examples. Area names match
+// case-insensitively. Returns { groups, errors, examples: bucket -> 4 examples }; any error means don't apply it.
 // count: how many buckets there must be. Ten, or one per area when there are fewer areas.
 export function parseBuckets(text, areas, count = Math.min(BUCKET_COUNT, areas.length)) {
   const canonical = new Map(areas.map((a) => [a.toLowerCase(), a]));
   const bucketOf = new Map();
   const errors = [];
   const unknown = [];
+  const examples = new Map();
   for (const line of text.split("\n")) {
     const cells = line.replace(/[*`]/g, "").trim().replace(/^\||\|$/g, "").split("|").map((c) => c.trim());
+    if (cells.length === 5 && cells.every(Boolean) && cells[0].toLowerCase() !== "bucket" && !/^:?-+:?$/.test(cells[1])) {
+      examples.set(cells[0].toLowerCase(), cells.slice(1));
+      continue;
+    }
     if (cells.length !== 2 || !cells[0] || !cells[1] || /^-+$/.test(cells[0])) continue;
     if (cells[0].toLowerCase() === "area" && cells[1].toLowerCase() === "bucket") continue;
     const area = canonical.get(cells[0].toLowerCase());
@@ -168,7 +201,11 @@ export function parseBuckets(text, areas, count = Math.min(BUCKET_COUNT, areas.l
   if (missing.length) errors.push(`Missing: ${missing.join(", ")}`);
   const groups = readBuckets([...bucketOf].map(([area, bucket]) => ({ area, bucket }))).groups.sort((a, b) => byName(a.name, b.name));
   if (groups.length !== count) errors.push(`${groups.length} bucket${groups.length === 1 ? "" : "s"}: exactly ${count}, please`);
-  return { groups, errors };
+  // Examples keyed by the bucket names the grouping uses, matched case-insensitively.
+  const byGroup = new Map(groups.filter((g) => examples.has(g.name.toLowerCase())).map((g) => [g.name, examples.get(g.name.toLowerCase())]));
+  const noExamples = groups.map((g) => g.name).filter((n) => !byGroup.has(n));
+  if (noExamples.length) errors.push(`No examples for: ${noExamples.join(", ")}`);
+  return { groups, errors, examples: byGroup };
 }
 
 // Pairs each proposed group with the current bucket it overlaps most, largest overlaps first, one to one.

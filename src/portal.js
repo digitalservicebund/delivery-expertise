@@ -7,7 +7,7 @@ import { liveLayout } from "./sheets.js";
 import { FORM_INFO, formItems, formRequests, branchRequest, supplyFormula } from "./icform.js";
 import { readAreas, areaIssues, areasMissingFrom, AREA_HEADER } from "./areas.js";
 import { formRows } from "./prefill.js";
-import { compareBuckets, bucketPrompt, parseBuckets, readBuckets, bucketRows, areasToGroup, pending, topAreas, nextHistory, aliasesOf, inferHistory, effectiveBuckets } from "./buckets.js";
+import { compareBuckets, bucketPrompt, parseBuckets, readBuckets, bucketRows, areasToGroup, pending, topAreas, nextHistory, aliasesOf, inferHistory, effectiveBuckets, bucketsWithoutExamples, exampleRows } from "./buckets.js";
 
 const mode = await currentMode();
 bar(mode);
@@ -88,8 +88,8 @@ async function readDomains(config, t) {
 // sheet: "discipline" holds the real buckets; "prototype" holds the dummy ones, written by the panel in prototype mode.
 async function readBucketTabs(config, t, sheet = "discipline") {
   const id = config.sheets[sheet];
-  const { rows } = await withSheet(config, t, id, SHEET_LABEL[sheet], () => readTabs(t, id, ["buckets", "bucket-history"]));
-  return { buckets: rows.buckets, history: rows["bucket-history"] };
+  const { rows } = await withSheet(config, t, id, SHEET_LABEL[sheet], () => readTabs(t, id, ["buckets", "bucket-history", "bucket-examples"]));
+  return { buckets: rows.buckets, history: rows["bucket-history"], examples: rows["bucket-examples"] };
 }
 
 // Retroactive bucket history: every bucket the IC form ever asked about is a column of its responses. Former ones
@@ -113,7 +113,7 @@ async function recoverHistory(config, t, tab, buckets, history, catalogue, lines
 // Survey sheets first, so the aggregate sheet's imports point at tabs that exist.
 async function setUpLiveSheets(config, t) {
   const layout = liveLayout(config.sheets);
-  const { buckets, history } = await readBucketTabs(config, t);
+  const { buckets, history, examples } = await readBucketTabs(config, t);
   const { rows: areaRows, catalogue } = await readCatalogue(config, t);
   const areas = topAreas(buckets, catalogue.defaultBuckets);
   status.replaceChildren(`Finding the IC form's responses…`);
@@ -138,6 +138,8 @@ async function setUpLiveSheets(config, t) {
   const added = await addMissingAreas(config, t, areaRows, buckets);
   if (added.length) lines.push(`discipline sheet, areas: added from the buckets: ${added.map((r) => r.area).join(", ")}. Fill in their examples there.`);
   lines.push(...areaIssues([...areaRows, ...added]).map((issue) => `discipline sheet, areas: ${issue}`));
+  const bare = bucketsWithoutExamples(topAreas(buckets, catalogue.defaultBuckets), examples);
+  if (bare.length) lines.push(`discipline sheet, bucket-examples: buckets without all four examples, shown with generic ones in the survey: ${bare.join(", ")}. Fill them in there, or Ask Gemini again.`);
   // Google lets nobody approve an import through the API: it takes one click in each importing sheet.
   const link = (sheet) => Object.assign(document.createElement("a"), {
     href: `https://docs.google.com/spreadsheets/d/${config.sheets[sheet]}/edit`, target: "_blank", rel: "noopener", textContent: SHEET_LABEL[sheet],
@@ -252,14 +254,14 @@ async function previewBuckets(config, t) {
   // Reading may have failed when the panel opened, say before a sheet was handed to the app: try again.
   if (!bucketState) await showBuckets(config, t);
   const { current, areas } = bucketState;
-  const { groups, errors } = parseBuckets(answerBox.value, areas);
+  const { groups, errors, examples } = parseBuckets(answerBox.value, areas);
   if (errors.length) {
     applyButton.hidden = true;
     document.getElementById("buckets-proposed").replaceChildren(listOf(errors));
     return bucketStatus.replaceChildren("This answer can't be used as it is. Ask Gemini to fix it, or edit it here:");
   }
   const result = compareBuckets(readBuckets(current).groups, groups);
-  bucketState.result = result;
+  Object.assign(bucketState, { result, groups, examples });
   const changes = [
     ...result.added.map((c) => `New area: ${c.area} → ${c.to}`),
     ...result.moves.map((c) => `Moves: ${c.area}, ${c.from} → ${c.to}`),
@@ -278,8 +280,8 @@ async function applyBuckets(config, t) {
   const sheet = bucketSheet();
   const id = config.sheets[sheet];
   const at = new Date().toISOString();
-  const { result, history } = bucketState;
-  const tabs = { buckets: bucketRows(result.buckets, at), "bucket-history": nextHistory(history, result, at) };
+  const { result, history, groups, examples } = bucketState;
+  const tabs = { buckets: bucketRows(result.buckets, at), "bucket-history": nextHistory(history, result, at), "bucket-examples": exampleRows(result, groups, examples) };
   await withSheet(config, t, id, SHEET_LABEL[sheet], () => replaceTabs(t, id, tabs));
   // Live, areas the new buckets name but the area list lacks join the list, so it keeps matching the buckets.
   const added = sheet === "discipline" ? await addMissingAreas(config, t, (await readCatalogue(config, t)).rows, tabs.buckets) : [];

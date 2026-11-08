@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { compareBuckets, bucketPrompt, parseBuckets, readBuckets, bucketRows, areasToGroup, pending, topAreas, inBuckets, BUCKET_HEADER, HISTORY_HEADER, nextHistory, aliasesOf, renamedTo, inferHistory, effectiveBuckets, suggestBuckets, demandAreas, surveySections } from "../src/buckets.js";
+import { compareBuckets, bucketPrompt, parseBuckets, readBuckets, bucketRows, areasToGroup, pending, topAreas, inBuckets, BUCKET_HEADER, HISTORY_HEADER, nextHistory, aliasesOf, renamedTo, inferHistory, effectiveBuckets, suggestBuckets, demandAreas, surveySections, EXAMPLE_HEADER, readExamples, bucketsWithoutExamples, exampleRows } from "../src/buckets.js";
 import { liveLayout } from "../src/sheets.js";
 import { AREA_HEADER } from "../src/areas.js";
 import { CATALOGUE } from "./fixtures/areas.js";
@@ -36,7 +36,9 @@ test("the discipline sheet gets a buckets tab, and the aggregate sheet imports i
   assert.deepEqual(layout.discipline["bucket-history"], { header: HISTORY_HEADER });
   assert.match(layout.aggregate["bucket-history"].formula, /IMPORTRANGE\("D", "bucket-history!A:C"\)/);
   assert.deepEqual(layout.discipline.areas, { header: AREA_HEADER });
-  assert.match(layout.aggregate.areas.formula, /IMPORTRANGE\("D", "areas!A:G"\)/);
+  assert.match(layout.aggregate.areas.formula, /IMPORTRANGE\("D", "areas!A:C"\)/);
+  assert.deepEqual(layout.discipline["bucket-examples"], { header: EXAMPLE_HEADER });
+  assert.match(layout.aggregate["bucket-examples"].formula, /IMPORTRANGE\("D", "bucket-examples!A:E"\)/);
   assert.equal(layout.aggregate.buckets.formula, '=QUERY(IMPORTRANGE("D", "buckets!A:C"), "select Col1, Col2, Col3 where Col1 is not null", 1)');
 });
 
@@ -122,18 +124,22 @@ test("the prompt for Gemini lists every area once, the current buckets, and the 
 });
 
 test("Gemini's answer is read leniently, but every area must be in exactly one of exactly 10 buckets", () => {
-  const answer = "Here you go:\n```\narea | bucket\n| CSS | Web |\n**Frontend** | Web\nrust | Systems\n```";
-  assert.deepEqual(parseBuckets(answer, ["CSS", "Frontend", "Rust"], 2), {
+  const answer = "Here you go:\n```\narea | bucket\n| CSS | Web |\n**Frontend** | Web\nrust | Systems\n```\nWeb | a | b | c | d\nSystems | e | f | g | h";
+  const { examples, ...parsed } = parseBuckets(answer, ["CSS", "Frontend", "Rust"], 2);
+  assert.equal(examples.size, 2);
+  assert.deepEqual(parsed, {
     groups: [{ name: "Systems", areas: ["Rust"] }, { name: "Web", areas: ["CSS", "Frontend"] }],
     errors: [],
   });
+  // Grouping errors come first; missing examples are reported last.
+  const grouping = (r) => r.errors.filter((e) => !e.startsWith("No examples"));
   const bad = parseBuckets("CSS | Web\nCSS | Other\nGo | Web", ["CSS", "Frontend"], 1);
-  assert.deepEqual(bad.errors, ["CSS is in more than one bucket: Web, Other", "Not one of the areas: Go", "Missing: Frontend"]);
+  assert.deepEqual(grouping(bad), ["CSS is in more than one bucket: Web, Other", "Not one of the areas: Go", "Missing: Frontend"]);
   const many = Array.from({ length: 11 }, (_, i) => `A${i}`);
-  assert.deepEqual(parseBuckets(many.map((a) => `${a} | ${a}`).join("\n"), many).errors, ["11 buckets: exactly 10, please"]);
-  assert.deepEqual(parseBuckets(many.map((a, i) => `${a} | B${i % 9}`).join("\n"), many).errors, ["9 buckets: exactly 10, please"]);
+  assert.deepEqual(grouping(parseBuckets(many.map((a) => `${a} | ${a}`).join("\n"), many)), ["11 buckets: exactly 10, please"]);
+  assert.deepEqual(grouping(parseBuckets(many.map((a, i) => `${a} | B${i % 9}`).join("\n"), many)), ["9 buckets: exactly 10, please"]);
   // Fewer than ten areas: one bucket each.
-  assert.deepEqual(parseBuckets("A | X\nB | X", ["A", "B"]).errors, ["1 bucket: exactly 2, please"]);
+  assert.deepEqual(grouping(parseBuckets("A | X\nB | X", ["A", "B"])), ["1 bucket: exactly 2, please"]);
 });
 
 test("with no current buckets every proposed one is new", () => {
@@ -244,5 +250,30 @@ test("picked areas become one survey section per bucket, in picking order", () =
     { bucket: "Frontend", areas: ["React", "Design systems"], grouped: true },
     { bucket: "Backend", areas: ["Postgres"], grouped: true },
     { bucket: "Rust", areas: ["Rust"], grouped: false },
+  ]);
+});
+
+test("examples per working method belong to buckets, read from their own tab", () => {
+  assert.deepEqual(EXAMPLE_HEADER, ["bucket", "operative", "conceptual", "strategic", "comprehensive"]);
+  const examples = readExamples([{ bucket: "Web", operative: "a", conceptual: "b", strategic: "c", comprehensive: "d" }, { bucket: "", operative: "x" }]);
+  assert.deepEqual([...examples], [["Web", ["a", "b", "c", "d"]]]);
+  assert.deepEqual(bucketsWithoutExamples(["Web", "Data"], [{ bucket: "Web", operative: "a", conceptual: "b", strategic: "c", comprehensive: "" }]), ["Web", "Data"]);
+});
+
+test("the Gemini prompt also asks for four examples per bucket, and the answer gives them back", () => {
+  assert.match(bucketPrompt(["Rust"], []), /bucket \| operative \| conceptual \| strategic \| comprehensive/);
+  const answer = "CSS | Web\nFrontend | Web\nRust | Systems\n\n| bucket | operative | conceptual | strategic | comprehensive |\n| Web | Build pages | Plan a journey | Set standards | Shape government web |\nSystems | Write Rust | Design a parser | Pick the stack | Shape systems work |";
+  const { groups, errors, examples } = parseBuckets(answer, ["CSS", "Frontend", "Rust"], 2);
+  assert.deepEqual(errors, []);
+  assert.deepEqual(groups.map((g) => g.name), ["Systems", "Web"]);
+  assert.deepEqual(examples.get("Web"), ["Build pages", "Plan a journey", "Set standards", "Shape government web"]);
+  assert.deepEqual(parseBuckets("CSS | Web\nFrontend | Web\nRust | Systems", ["CSS", "Frontend", "Rust"], 2).errors, ["No examples for: Systems, Web"]);
+});
+
+test("examples are saved under the names the buckets end up with", () => {
+  const proposed = [{ name: "Frontend", areas: ["CSS", "Frontend"] }];
+  const result = compareBuckets([{ name: "Web", areas: ["CSS", "Frontend"] }], proposed);
+  assert.deepEqual(exampleRows(result, proposed, new Map([["Frontend", ["a", "b", "c", "d"]]])), [
+    { bucket: "Web", operative: "a", conceptual: "b", strategic: "c", comprehensive: "d" },
   ]);
 });

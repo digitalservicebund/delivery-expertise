@@ -82,7 +82,9 @@ One tab, `plan`, in the shape of `data/discipline-plan.csv` plus who submitted i
 quarter | kind | subject | method | value | reason | submitted_by | submitted_at
 ```
 
-An `areas` tab holds the area list: `area | default_bucket | support | operative | conceptual | strategic | comprehensive`, one row per area. It is the source for the survey's word cloud, its examples per working method and the support it offers (`cop`, `platform` or `legal`), and the default buckets used until a grouping is applied. It is filled in and edited here; there is no list in the code. **Set up live sheets** adds its header and warns when it is empty, its default buckets aren't exactly ten, or an area has none. **Load dummy data** copies it into the prototype sheet.
+An `areas` tab holds the area list: `area | default_bucket | support`, one row per area. It is the source for the survey's word cloud, the support it offers (`cop`, `platform` or `legal`), and the default buckets used until a grouping is applied. It is filled in and edited here; there is no list in the code. **Set up live sheets** adds its header, adds any area the buckets name that it lacks (with the default bucket of its bucket-mates), and warns when it is empty, its default buckets aren't exactly ten, or an area has none. **Load dummy data** copies it into the prototype sheet.
+
+A `bucket-examples` tab holds one example of the work per working method for each bucket: `bucket | operative | conceptual | strategic | comprehensive`. The project survey shows them above each bucket's grid; a bucket without all four gets generic ones. **Ask Gemini** asks for them along with the grouping and **Apply** writes them; for the default buckets, fill them in here. **Set up live sheets** lists buckets that lack them.
 
 A `buckets` tab holds the top areas: `area | bucket | generated_at`, one row per area. It is the source of truth for the IC form's grid and the supply counts, which ask and count per bucket. The portal's **Top areas** panel prompts discipline heads when areas are in no bucket or the grouping is over a quarter old, copies a prompt for Gemini (which they run in their own Gemini tab), reads the pasted answer back, previews it against the current buckets and writes it on **Apply**. The app never calls Gemini itself. Rename a bucket by editing the `bucket` column; a renamed bucket gets a new response column in the IC form.
 
@@ -129,6 +131,8 @@ Rows for policy domains come after the buckets, labelled `Domain expertise: <dom
 IC answers are stored per bucket name, so after a regrouping older answers sit in former buckets' columns. `supply` counts them with the bucket each went to, from the `bucket-history` tab: per person, the highest level across the bucket's own column and its former buckets' columns.
 
 **`areas`** copies the discipline sheet's `areas` tab, so the project survey and the IC pages can read the area list.
+
+**`bucket-examples`** copies the discipline sheet's `bucket-examples` tab, for the project survey.
 
 **`buckets`** copies the discipline sheet's `buckets` tab: area and bucket names only. In live mode the discipline view maps demand and planned adjustments to these buckets, so they meet supply, which is counted per bucket. Areas in no bucket and domain expertise stay as they are.
 

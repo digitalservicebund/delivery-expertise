@@ -9,7 +9,7 @@ import { DEMAND_HEADER } from "./sheets.js";
 import { teamsOf, projectsByTeam } from "./teams.js";
 import { relevance, matches } from "./cloud.js";
 import { COP, SUPPORT_KEY, readAreas } from "./areas.js";
-import { effectiveBuckets, suggestBuckets, demandAreas, surveySections, inBuckets } from "./buckets.js";
+import { effectiveBuckets, suggestBuckets, demandAreas, surveySections, inBuckets, readExamples } from "./buckets.js";
 import { METHODS as METHOD_LEVEL, PEOPLE as PEOPLE_COUNT, LEVELS, supplyAsOf, assessedCoverage, WORKING_DAYS_PER_QUARTER, UTILISATION, BOOKABLE_DAYS_PER_QUARTER } from "./model.js";
 
 const QUARTER = "2027-Q1";
@@ -203,7 +203,7 @@ function rowsFor(form, team) {
 // Missing datasets come back empty: the survey still works, just without suggestions or a team list.
 // Live reads the teams tab instead of staffing: staffing sits in the discipline sheet, which project leads
 // can't open. The teams tab says who may answer for which team.
-const BUCKET_TABS = ["buckets", "bucket-history", "areas"];
+const BUCKET_TABS = ["buckets", "bucket-history", "areas", "bucket-examples"];
 const LIVE_TABS = [...DATA_TABS.filter((n) => n !== "staffing"), "teams", ...BUCKET_TABS];
 const session = await load((await currentMode()) === "live" ? LIVE_TABS : [...DATA_TABS, ...BUCKET_TABS]);
 const sets = session.data;
@@ -211,6 +211,9 @@ const [staffing, plan, demand, activity, assessments] = ["staffing", "discipline
 // The buckets in force (the default ten until a grouping is applied) and which bucket each area is in.
 // The area list from the areas tab (the built-in one while it is empty).
 const catalogueAreas = readAreas(sets.areas ?? []);
+// Examples per working method, per bucket. A bucket without all four gets generic ones.
+const bucketExamples = readExamples(sets["bucket-examples"] ?? []);
+const examplesFor = (bucket) => (bucketExamples.get(bucket)?.every(Boolean) ? bucketExamples.get(bucket) : GENERIC_CUSTOM);
 const bucketRows = effectiveBuckets(sets.buckets ?? [], catalogueAreas.defaultBucketAreas);
 const bucketOfArea = new Map(bucketRows.map((r) => [r.area, r.bucket]));
 const bucketNames = [...new Set(bucketRows.map((r) => r.bucket))];
@@ -297,7 +300,7 @@ const built = new Map();
 // project's domain. Each knows its bucket; a write-in another team placed keeps the bucket that team chose.
 function catalogueFor(team) {
   const domain = domainOf.get(projectOf.get(team));
-  const list = catalogueAreas.areas.map(([name, support, examples]) => ({ id: slug(name), name, bucket: bucketOfArea.get(name) ?? null, support, examples: examples.every(Boolean) ? examples : GENERIC_CUSTOM }));
+  const list = catalogueAreas.areas.map(([name, support]) => ({ id: slug(name), name, bucket: bucketOfArea.get(name) ?? null, support }));
   if (domain) list.push({
     id: "domain", name: `Domain expertise: ${domain}`, domain, examples: DOMAIN_EXAMPLES[domain] ?? GENERIC_DOMAIN,
     note: "From your project's domain. If your team also works in another domain, add it.",
@@ -409,10 +412,10 @@ function renderPicked() {
   const nodes = sections.map(({ bucket, areas: names, grouped }) => {
     const id = `b-${slug(bucket)}`;
     if (!built.has(id)) {
-      // Examples and support come from the first picked area that has them.
+      // Support comes from the first picked area on the list; examples from the bucket.
       const lead = names.map((n) => catalogue.find((a) => a.name === n)).find((a) => !a.custom) ?? {};
       built.set(id, areaSection({
-        id, name: bucket, expertise: bucket, subject: bucket, support: lead.support ?? COP, examples: lead.examples ?? GENERIC_CUSTOM,
+        id, name: bucket, expertise: bucket, subject: bucket, support: lead.support ?? COP, examples: examplesFor(bucket),
         note: grouped ? "" : "Not in any bucket yet. Describe it below so the discipline can group it with similar ones.",
         previous: historical ? previousFor(team, slug(bucket)) : undefined,
         hint: historical && grouped ? hintFor(team, slug(bucket)) : undefined,

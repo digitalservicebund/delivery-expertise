@@ -1,10 +1,7 @@
 // A small areas tab, as the discipline sheet holds it, for tests. Ten default buckets.
 import { readAreas } from "../../src/areas.js";
 
-const row = (area, bucket, support = "cop") => ({
-  area, default_bucket: bucket, support,
-  operative: `Do ${area}`, conceptual: `Plan ${area}`, strategic: `Lead ${area}`, comprehensive: `Shape ${area}`,
-});
+const row = (area, bucket, support = "cop") => ({ area, default_bucket: bucket, support });
 
 export const AREA_ROWS = [
   row("Technical discovery", "Discovery & Inception"),
