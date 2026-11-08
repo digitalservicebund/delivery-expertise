@@ -1,6 +1,7 @@
 // Converting between Sheets API values (arrays of rows, the first being the header) and the row objects
 // the pages work with, the same shape parseCsv gives. Pure, so it runs in tests.
 import { STAFFING_HEADER, teamsFormula } from "./teams.js";
+import { BUCKET_HEADER } from "./buckets.js";
 
 export function rowsFromValues(values = []) {
   const [header = [], ...body] = values;
@@ -54,10 +55,13 @@ export function liveLayout(sheets) {
     // teams is read only by the survey, from this sheet. Its emails never go to the aggregate sheet.
     projects: { demand: { header: DEMAND_HEADER }, teams: { formula: teamsFormula(sheets.discipline) } },
     // Pasted by hand from the ds-staffing snapshot export. Holds names and levels: discipline heads only.
-    discipline: { plan: { header: PLAN_HEADER }, staffing: { header: STAFFING_HEADER } },
+    // buckets: the top areas, written by the portal's bucket review (src/buckets.js).
+    discipline: { plan: { header: PLAN_HEADER }, staffing: { header: STAFFING_HEADER }, buckets: { header: BUCKET_HEADER } },
     aggregate: {
       demand: { formula: importOf(sheets.projects, "demand", DEMAND_HEADER) },
       plan: { formula: importOf(sheets.discipline, "plan", PLAN_HEADER) },
+      // Area and bucket names only: the discipline view maps demand to the buckets supply is counted in.
+      buckets: { formula: importOf(sheets.discipline, "buckets", BUCKET_HEADER) },
     },
   };
 }

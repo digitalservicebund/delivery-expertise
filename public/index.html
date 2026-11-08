@@ -108,6 +108,27 @@
         <button type="button">Set up IC form</button>
       </div>
       <output class="muted" aria-live="polite"></output>
+      <section id="buckets" aria-labelledby="buckets-heading">
+        <h3 id="buckets-heading">Top areas</h3>
+        <p class="muted">Every area of expertise, including the ones teams add in the survey, grouped into at most 10 buckets. The IC form asks about the buckets, and supply is counted per bucket. The <strong>buckets</strong> tab in the discipline sheet is the source of truth: rename a bucket there by hand if you like. To regroup, <strong>Ask Gemini</strong> copies a prompt listing every area and opens Gemini in a new tab: paste it there, copy Gemini's answer, paste it below and preview what would change. Nothing is written until you apply it.</p>
+        <p id="buckets-prompt" hidden></p>
+        <div id="buckets-current"></div>
+        <div class="actions">
+          <button type="button" id="buckets-ask" disabled>Ask Gemini</button>
+        </div>
+        <details>
+          <summary>The prompt, if copying didn't work</summary>
+          <textarea id="buckets-question" rows="8" readonly aria-label="Prompt for Gemini"></textarea>
+        </details>
+        <label for="buckets-answer">Gemini's answer</label>
+        <textarea id="buckets-answer" rows="8" placeholder="area | bucket, one per line"></textarea>
+        <div class="actions">
+          <button type="button" id="buckets-preview">Preview regrouping</button>
+          <button type="button" id="buckets-apply" hidden>Apply this grouping</button>
+        </div>
+        <output class="muted" aria-live="polite"></output>
+        <div id="buckets-proposed"></div>
+      </section>
     </section>
   </main>
 </body>

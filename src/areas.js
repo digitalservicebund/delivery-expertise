@@ -1,5 +1,5 @@
 // The organisation's areas of expertise, shared by the project survey and the IC form.
-// Until the grouping from embeddings exists, these ten stand in for the top 10.
+// The first ten stand in for the top 10 until the discipline sheet has buckets (src/buckets.js).
 export const COP = "the community of practice";
 export const SUPPORT_KEY = { "the platform team": "platform", "the legal and IT security team": "legal", [COP]: "cop" };
 // Name, support the area can also draw on, and one example per working method.
