@@ -173,18 +173,21 @@ const row = (values) => `{${values.map(quote).join(",")}}`;
 // Raw rows never leave the formula. Counts below MIN_GROUP are blank. Output: area, then one column per level.
 // Each person's latest self-assessment counts, once. Only an area without a column yet counts as 0: any other
 // error shows, so an import that still needs "Allow access" displays its #REF! and button.
-export function supplyFormula(sheetId, tab, areas) {
+// aliases: area -> former bucket names that went into it (the bucket history). Their response columns count
+// with it, so answers from before a regrouping stay counted: per person, the highest level across the columns.
+export function supplyFormula(sheetId, tab, areas, aliases = {}) {
+  const names = areas.map((a) => [a, ...(aliases[a] ?? [])].join("|"));
   return `=LET(
   d, IMPORTRANGE(${quote(sheetId)}, ${quote(`'${tab}'!A:ZZ`)}),
   h, CHOOSEROWS(d, 1),
   body, FILTER(d, SEQUENCE(ROWS(d)) > 1, CHOOSECOLS(d, XMATCH(${quote(WHOSE)}, h)) = ${quote(MYSELF)}),
   latest, SORTN(SORT(body, 1, FALSE), 9^9, 2, XMATCH("Email address", h), TRUE),
   areas, ${column(areas)},
+  names, ${column(names)},
   levels, ${row(SUPPLY_LEVELS)},
-  cols, MAP(areas, LAMBDA(a, IFNA(XMATCH(${quote(`${GRID} [`)} & a & "]", h), 0))),
   counts, MAKEARRAY(ROWS(areas), COLUMNS(levels), LAMBDA(i, j, LET(
-    k, INDEX(cols, i, 1),
-    n, IF(k = 0, 0, SUM(--(CHOOSECOLS(latest, MAX(k, 1)) = INDEX(levels, 1, j)))),
+    cols, MAP(SPLIT(INDEX(names, i, 1), "|", FALSE, FALSE), LAMBDA(a, IFNA(XMATCH(${quote(`${GRID} [`)} & a & "]", h), 0))),
+    n, IF(MAX(cols) = 0, 0, SUM(--(BYROW(CHOOSECOLS(latest, FILTER(cols, cols > 0)), LAMBDA(r, MAX(IFNA(XMATCH(r, levels), 0)))) = j))),
     IF(n < ${MIN_GROUP}, "", n)))),
   VSTACK(HSTACK("area", levels), HSTACK(areas, counts))
 )`;

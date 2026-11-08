@@ -7,7 +7,7 @@ import { liveLayout } from "./sheets.js";
 import { FORM_INFO, formItems, formRequests, branchRequest, supplyFormula } from "./icform.js";
 import { AREA_NAMES, DEFAULT_BUCKETS } from "./areas.js";
 import { formRows } from "./prefill.js";
-import { compareBuckets, bucketPrompt, parseBuckets, readBuckets, bucketRows, areasToGroup, pending, topAreas } from "./buckets.js";
+import { compareBuckets, bucketPrompt, parseBuckets, readBuckets, bucketRows, areasToGroup, pending, topAreas, nextHistory, aliasesOf } from "./buckets.js";
 
 const mode = await currentMode();
 bar(mode);
@@ -59,24 +59,25 @@ async function responsesTab(config, t) {
   return tab;
 }
 
-// The current buckets from the discipline sheet: the names the IC form and supply use.
+// The current buckets from the discipline sheet, the names the IC form and supply use, and where former buckets went.
 // sheet: "discipline" holds the real buckets; "prototype" holds the dummy ones, written by the panel in prototype mode.
-async function readBucketTab(config, t, sheet = "discipline") {
+async function readBucketTabs(config, t, sheet = "discipline") {
   const id = config.sheets[sheet];
-  const { rows } = await withSheet(config, t, id, SHEET_LABEL[sheet], () => readTabs(t, id, ["buckets"]));
-  return rows.buckets;
+  const { rows } = await withSheet(config, t, id, SHEET_LABEL[sheet], () => readTabs(t, id, ["buckets", "bucket-history"]));
+  return { buckets: rows.buckets, history: rows["bucket-history"] };
 }
 
 // Survey sheets first, so the aggregate sheet's imports point at tabs that exist.
 async function setUpLiveSheets(config, t) {
   const layout = liveLayout(config.sheets);
-  const areas = topAreas(await readBucketTab(config, t), DEFAULT_BUCKETS);
+  const { buckets, history } = await readBucketTabs(config, t);
+  const areas = topAreas(buckets, DEFAULT_BUCKETS);
   status.replaceChildren(`Finding the IC form's responses…`);
   const lines = [];
   // Without linked responses the rest is still worth setting up: supply just waits for a later run.
   try {
     const tab = await responsesTab(config, t);
-    layout.aggregate.supply = { formula: supplyFormula(config.sheets.icResponses, tab, areas) };
+    layout.aggregate.supply = { formula: supplyFormula(config.sheets.icResponses, tab, areas, aliasesOf(history)) };
     lines.push(`IC responses sheet: counting from the “${tab}” tab`);
   } catch (err) {
     lines.push(`aggregate sheet, supply: skipped. ${err.message}`);
@@ -102,7 +103,7 @@ async function setUpLiveSheets(config, t) {
 async function setUpIcForm(config, t) {
   const id = config.icFormId;
   status.replaceChildren("Reading the top areas…");
-  const areas = topAreas(await readBucketTab(config, t), DEFAULT_BUCKETS);
+  const areas = topAreas((await readBucketTabs(config, t)).buckets, DEFAULT_BUCKETS);
   status.replaceChildren("Reading the IC form…");
   const form = await withSheet(config, t, id, "IC form", () => getForm(t, id), "FORMS");
   status.replaceChildren("Updating the questions…");
@@ -160,9 +161,9 @@ async function readDemand(config, t) {
 }
 
 async function showBuckets(config, t) {
-  const [current, demand] = await Promise.all([readBucketTab(config, t, bucketSheet()), readDemand(config, t)]);
+  const [{ buckets: current, history }, demand] = await Promise.all([readBucketTabs(config, t, bucketSheet()), readDemand(config, t)]);
   const areas = areasToGroup(demand, current, AREA_NAMES);
-  bucketState = { current, demand, areas };
+  bucketState = { current, history, demand, areas };
   const { ungrouped, stale, empty } = pending(current, areas);
   const prompt = document.getElementById("buckets-prompt");
   prompt.hidden = !(empty || ungrouped.length || stale);
@@ -207,7 +208,7 @@ async function previewBuckets(config, t) {
     return bucketStatus.replaceChildren("This answer can't be used as it is. Ask Gemini to fix it, or edit it here:");
   }
   const result = compareBuckets(readBuckets(current).groups, groups);
-  bucketState.proposed = result.buckets;
+  bucketState.result = result;
   const changes = [
     ...result.added.map((c) => `New area: ${c.area} → ${c.to}`),
     ...result.moves.map((c) => `Moves: ${c.area}, ${c.from} → ${c.to}`),
@@ -225,15 +226,17 @@ async function previewBuckets(config, t) {
 async function applyBuckets(config, t) {
   const sheet = bucketSheet();
   const id = config.sheets[sheet];
-  const rows = bucketRows(bucketState.proposed, new Date().toISOString());
-  await withSheet(config, t, id, SHEET_LABEL[sheet], () => replaceTabs(t, id, { buckets: rows }));
+  const at = new Date().toISOString();
+  const { result, history } = bucketState;
+  const tabs = { buckets: bucketRows(result.buckets, at), "bucket-history": nextHistory(history, result, at) };
+  await withSheet(config, t, id, SHEET_LABEL[sheet], () => replaceTabs(t, id, tabs));
   applyButton.hidden = true;
   answerBox.value = "";
   document.getElementById("buckets-proposed").replaceChildren();
   await showBuckets(config, t);
   bucketStatus.replaceChildren(sheet === "prototype"
     ? "Saved to the prototype sheet. The discipline view in prototype mode now counts demand, ratings and activity per bucket. The live buckets are unchanged."
-    : "Saved. Run Set up IC form and then Set up live sheets, so the form and the supply counts use the new buckets. Renamed or new buckets get new response columns; answers under old names are no longer counted.");
+    : "Saved. Run Set up IC form and then Set up live sheets, so the form and the supply counts use the new buckets. Renamed or new buckets get new response columns; answers under a former bucket count towards the bucket it went to (the bucket-history tab).");
 }
 
 action(previewButton, "Could not preview the regrouping.", previewBuckets, bucketStatus);

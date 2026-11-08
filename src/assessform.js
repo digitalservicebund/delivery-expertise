@@ -6,7 +6,7 @@ import { readTabs, withSheet } from "./google.js";
 import { topAreas } from "./buckets.js";
 import { DEFAULT_BUCKETS } from "./areas.js";
 import { RATINGS } from "./icform.js";
-import { readFormRows, prefillUrl } from "./prefill.js";
+import { readFormRows, prefillUrl, followBuckets } from "./prefill.js";
 import { restoreAssessment, saveAssessment } from "./selfassessment.js";
 
 const OWN_VIEW = "ic.html";
@@ -22,7 +22,7 @@ const rateStatus = document.getElementById("rate-status");
 const rateNote = document.getElementById("rate-note");
 
 // Only the buckets are needed here: they are the questions. Optional in both modes.
-const session = await load(["buckets"]);
+const session = await load(["buckets", "bucket-history"]);
 const buckets = session.data.buckets ?? [];
 const areas = topAreas(buckets, DEFAULT_BUCKETS);
 if (!buckets.length) {
@@ -41,8 +41,8 @@ try {
 }
 
 const state = restoreAssessment();
-// Answers for areas no longer asked about are dropped; new areas start unanswered.
-state.ratings = Object.fromEntries(areas.map((a) => [a, RATINGS.includes(state.ratings[a]) ? state.ratings[a] : ""]));
+// Answers for former buckets follow them to the bucket they went to; others no longer asked about are dropped.
+state.ratings = followBuckets(state.ratings, areas, session.data["bucket-history"] ?? []);
 document.getElementById("own-view").hidden = !state.submitted;
 
 function renderTable() {

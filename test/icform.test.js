@@ -51,6 +51,9 @@ test("the supply formula finds columns by header and suppresses small counts", (
   assert.match(f, /IMPORTRANGE\("S", "'Form responses 1'!A:ZZ"\)/);
   assert.match(f, /\{"Data & ""AI"""\}/);
   assert.ok(f.includes(`IF(n < ${MIN_GROUP}, "", n)`));
+  // Older buckets that went into an area are counted with it, from their own response columns.
+  const merged = supplyFormula("S", "T", ["Platform"], { Platform: ["Infra", "Ops"] });
+  assert.ok(merged.includes(`{"Platform|Infra|Ops"}`));
   // Only a missing area column is caught. Everything else, like an import awaiting access, must show.
   assert.ok(!f.includes("IFERROR"));
 });

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { compareBuckets, bucketPrompt, parseBuckets, readBuckets, bucketRows, areasToGroup, pending, topAreas, inBuckets, BUCKET_HEADER } from "../src/buckets.js";
+import { compareBuckets, bucketPrompt, parseBuckets, readBuckets, bucketRows, areasToGroup, pending, topAreas, inBuckets, BUCKET_HEADER, HISTORY_HEADER, nextHistory, aliasesOf, renamedTo } from "../src/buckets.js";
 import { liveLayout } from "../src/sheets.js";
 
 test("the areas to group are the standard ones, every surveyed area and every grouped one, without domain expertise", () => {
@@ -31,6 +31,8 @@ test("the IC form and supply ask about the buckets, or the standard areas until 
 test("the discipline sheet gets a buckets tab, and the aggregate sheet imports it for everyone", () => {
   const layout = liveLayout({ discipline: "D" });
   assert.deepEqual(layout.discipline.buckets, { header: BUCKET_HEADER });
+  assert.deepEqual(layout.discipline["bucket-history"], { header: HISTORY_HEADER });
+  assert.match(layout.aggregate["bucket-history"].formula, /IMPORTRANGE\("D", "bucket-history!A:C"\)/);
   assert.equal(layout.aggregate.buckets.formula, '=QUERY(IMPORTRANGE("D", "buckets!A:C"), "select Col1, Col2, Col3 where Col1 is not null", 1)');
 });
 
@@ -135,4 +137,50 @@ test("with no current buckets every proposed one is new", () => {
   assert.deepEqual(result.buckets, [{ name: "Web", previous: null, areas: ["Frontend"] }]);
   assert.deepEqual(result.added, [{ area: "Frontend", to: "Web" }]);
   assert.deepEqual(result.created, [{ name: "Web", splitFrom: null }]);
+});
+
+test("applying a regrouping records where each old bucket went, so older answers follow it", () => {
+  const current = [
+    { name: "Backend", areas: ["APIs", "Backend", "Databases"] },
+    { name: "Web", areas: ["CSS", "Frontend"] },
+    { name: "Ops", areas: ["CI", "Kubernetes"] },
+    { name: "Infra", areas: ["Terraform"] },
+  ];
+  const result = compareBuckets(current, [
+    { name: "Databases", areas: ["APIs", "Databases"] },
+    { name: "Rust", areas: ["Backend", "Rust"] },
+    { name: "Frontend", areas: ["CSS", "Frontend"] },
+    { name: "CI", areas: ["CI", "Kubernetes", "Terraform"] },
+  ]);
+  assert.deepEqual(HISTORY_HEADER, ["bucket", "now", "changed_at"]);
+  // Backend was renamed Databases; Infra merged into Ops. Web and Ops kept their names.
+  assert.deepEqual(nextHistory([], result, "T1"), [
+    { bucket: "Backend", now: "Databases", changed_at: "T1" },
+    { bucket: "Infra", now: "Ops", changed_at: "T1" },
+  ]);
+});
+
+test("history follows chains of changes and forgets names that are buckets again", () => {
+  const before = [{ bucket: "Infra", now: "Ops", changed_at: "T1" }, { bucket: "Web", now: "Frontend", changed_at: "T1" }];
+  // Now Ops is merged into Platform, and Web, a new area, is a bucket of its own again.
+  const result = compareBuckets(
+    [{ name: "Ops", areas: ["CI"] }, { name: "Platform", areas: ["Helm", "Kubernetes"] }, { name: "Frontend", areas: ["CSS"] }],
+    [{ name: "Kubernetes", areas: ["CI", "Helm", "Kubernetes"] }, { name: "CSS", areas: ["CSS"] }, { name: "Web", areas: ["Web"] }],
+  );
+  assert.deepEqual(result.buckets.map((b) => b.name), ["Platform", "Frontend", "Web"]);
+  assert.deepEqual(nextHistory(before, result, "T2"), [
+    { bucket: "Infra", now: "Platform", changed_at: "T1" },
+    { bucket: "Ops", now: "Platform", changed_at: "T2" },
+  ]);
+});
+
+test("old bucket names become aliases of the bucket they went to", () => {
+  const history = [{ bucket: "Infra", now: "Platform" }, { bucket: "Ops", now: "Platform" }, { bucket: "", now: "X" }];
+  assert.deepEqual(aliasesOf(history), { Platform: ["Infra", "Ops"] });
+  assert.deepEqual([...renamedTo(history)], [["Infra", "Platform"], ["Ops", "Platform"]]);
+});
+
+test("rows naming an old bucket are counted under the bucket it went to", () => {
+  const out = inBuckets({ demand: [], plan: [{ kind: "adjust", subject: "Infra" }] }, [{ area: "Terraform", bucket: "Platform" }], [{ bucket: "Infra", now: "Platform" }]);
+  assert.equal(out.plan[0].subject, "Platform");
 });

@@ -50,3 +50,16 @@ export const ratingsToProfile = (ratings) =>
   Object.entries(ratings)
     .map(([expertise, rating]) => ({ expertise, level: levelOf(rating), self: levelOf(rating) }))
     .filter((r) => r.level > 0);
+
+// Saved answers (area -> rating) carried over to the current areas. An answer for a former bucket moves to the
+// bucket it went to (history: the bucket-history tab), unless that bucket has an answer of its own; on a merge
+// the highest rating wins. Answers for areas no longer asked about are dropped; new areas start unanswered.
+export function followBuckets(saved, areas, history) {
+  const out = Object.fromEntries(areas.map((a) => [a, RATINGS.includes(saved[a]) ? saved[a] : ""]));
+  for (const { bucket, now } of history) {
+    const rating = saved[bucket];
+    if (!(now in out) || !RATINGS.includes(rating) || RATINGS.includes(saved[now])) continue;
+    if (RATINGS.indexOf(rating) > RATINGS.indexOf(out[now])) out[now] = rating;
+  }
+  return out;
+}

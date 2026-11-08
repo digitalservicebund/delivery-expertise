@@ -5,6 +5,9 @@
 
 export const BUCKET_COUNT = 10;
 export const BUCKET_HEADER = ["area", "bucket", "generated_at"];
+// Where every former bucket went: its closest match in the current buckets. IC answers are stored per bucket
+// name, so this keeps older answers counted after a regrouping.
+export const HISTORY_HEADER = ["bucket", "now", "changed_at"];
 // After this long, admins are nudged to regroup even without new areas: one survey round.
 const STALE_DAYS = 90;
 
@@ -42,16 +45,45 @@ export function topAreas(rows, standard) {
 // each planned adjustment's subject, becomes its bucket. Areas in no bucket, and domain expertise, stay as they are.
 // Prototype ratings and activity are per area as well, so they are passed in and mapped too; live supply already
 // comes per bucket and is left out.
-export function inBuckets(data, rows) {
+// history: the bucket-history tab, so rows naming an old bucket (such as a planned adjustment) follow it too.
+export function inBuckets(data, rows, history = []) {
   const bucketOf = new Map(rows.filter((r) => r.area && r.bucket).map((r) => [r.area, r.bucket]));
   if (!bucketOf.size) return data;
-  const to = (name) => bucketOf.get(name) ?? name;
+  const moved = renamedTo(history);
+  const to = (name) => bucketOf.get(name) ?? moved.get(name) ?? name;
   const out = {};
   for (const [name, list] of Object.entries(data)) {
     out[name] = name === "plan"
       ? list.map((r) => (r.kind === "adjust" ? { ...r, subject: to(r.subject) } : r))
       : list.map((r) => ({ ...r, expertise: to(r.expertise) }));
   }
+  return out;
+}
+
+// The bucket history after applying a regrouping (result: from compareBuckets). A renamed bucket went to its new
+// name, a merged one to the bucket that took most of its areas; earlier entries follow along. A name that is a
+// bucket again is dropped: it counts as itself.
+export function nextHistory(history, result, at) {
+  const step = new Map([
+    ...result.renamed.map((r) => [r.from, r.to]),
+    ...result.removed.filter((r) => r.mergedInto).map((r) => [r.name, r.mergedInto]),
+  ]);
+  const current = new Set(result.buckets.map((b) => b.name));
+  const rows = [
+    ...history.filter((r) => r.bucket && r.now).map((r) => ({ ...r, now: step.get(r.now) ?? r.now })),
+    ...[...step].map(([bucket, now]) => ({ bucket, now, changed_at: at })),
+  ];
+  // One entry per old name, the latest winning; never a current bucket, never pointing at itself.
+  const latest = new Map(rows.map((r) => [r.bucket, r]));
+  return [...latest.values()].filter((r) => !current.has(r.bucket) && r.bucket !== r.now);
+}
+
+export const renamedTo = (history) => new Map(history.filter((r) => r.bucket && r.now).map((r) => [r.bucket, r.now]));
+
+// Current bucket -> the former buckets that went into it.
+export function aliasesOf(history) {
+  const out = {};
+  for (const [bucket, now] of renamedTo(history)) (out[now] ??= []).push(bucket);
   return out;
 }
 

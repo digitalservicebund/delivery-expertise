@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { formRows, readFormRows, prefillUrl, FORM_HEADER, levelOf, ratingsToProfile } from "../src/prefill.js";
+import { formRows, readFormRows, prefillUrl, FORM_HEADER, levelOf, ratingsToProfile, followBuckets } from "../src/prefill.js";
 import { WHOSE, GRID } from "../src/icform.js";
 
 // The IC form as the Forms API returns it after Set up IC form, trimmed to what matters.
@@ -46,4 +46,10 @@ test("the page's ratings become a profile on the model's level scale, Not my are
   assert.deepEqual(ratingsToProfile({ Frontend: "Strategic", Backend: "Not my area", Search: "" }), [
     { expertise: "Frontend", level: 5, self: 5 },
   ]);
+});
+
+test("saved answers for former buckets move to the bucket they went to, the highest winning on a merge", () => {
+  const history = [{ bucket: "Infra", now: "Platform" }, { bucket: "Ops", now: "Platform" }, { bucket: "Web", now: "Frontend" }];
+  const saved = { Infra: "Operative", Ops: "Strategic", Web: "Conceptual", Frontend: "Learning", Gone: "Comprehensive" };
+  assert.deepEqual(followBuckets(saved, ["Platform", "Frontend", "Data"], history), { Platform: "Strategic", Frontend: "Learning", Data: "" });
 });
