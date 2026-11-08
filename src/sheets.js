@@ -26,7 +26,9 @@ export function latestSubmissions(rows) {
 }
 
 // The live sheets' tabs. Survey sheets get header rows. The aggregate sheet gets one import formula per tab.
-export const DEMAND_HEADER = ["quarter", "team", "expertise", "domain", "method", "people", "coverage", "support", "specifics", "comment", "submitted_by", "submitted_at", "notes"];
+export const DEMAND_HEADER = ["quarter", "team", "expertise", "domain", "method", "people", "coverage", "support", "specifics", "comment", "submitted_by", "submitted_at", "notes", "areas"];
+// expertise is the bucket the answer is for; areas the areas the team picked in it, "; "-separated. Shared with the
+// aggregate sheet: area names, needed for regrouping.
 // notes ("Anything we should know?") is for the whole submission, so it repeats on each of its rows.
 // It comes last so the columns before it keep their place in sheets set up before it existed.
 export const PLAN_HEADER = ["quarter", "kind", "subject", "method", "value", "reason", "submitted_by", "submitted_at"];

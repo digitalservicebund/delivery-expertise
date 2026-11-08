@@ -2,6 +2,8 @@
 // BUCKET_COUNT buckets. The IC form asks about the buckets, and the aggregate supply counts per bucket.
 // The buckets tab in the discipline sheet is the source of truth; regrouping only proposes, and an admin applies.
 // Pure, so it runs in tests. Gemini proposes the grouping, through copy and paste in the portal (src/portal.js).
+import { DEFAULT_BUCKET_AREAS } from "./areas.js";
+
 
 export const BUCKET_COUNT = 10;
 export const BUCKET_HEADER = ["area", "bucket", "generated_at"];
@@ -16,7 +18,7 @@ const byName = (a, b) => a.localeCompare(b);
 // Everything to group: the standard areas, every area a team answered for (custom ones included) and every area
 // already in a bucket, so regrouping never drops one. Domain expertise is per policy domain and stays apart.
 export function areasToGroup(demand, currentRows, standard) {
-  const names = [...standard, ...demand.map((r) => r.expertise), ...currentRows.map((r) => r.area)]
+  const names = [...standard, ...demand.flatMap(demandAreas), ...currentRows.map((r) => r.area)]
     .map((n) => String(n ?? "").trim())
     .filter((n) => n && n !== "Domain expertise");
   return [...new Set(names)].sort(byName);
@@ -50,7 +52,9 @@ export function inBuckets(data, rows, history = []) {
   const bucketOf = new Map(rows.filter((r) => r.area && r.bucket).map((r) => [r.area, r.bucket]));
   if (!bucketOf.size) return data;
   const moved = renamedTo(history);
-  const to = (name) => bucketOf.get(name) ?? moved.get(name) ?? name;
+  const current = new Set(bucketOf.values());
+  // A row naming a current bucket (survey answers are per bucket) keeps it; an area or former bucket follows.
+  const to = (name) => (current.has(name) ? name : bucketOf.get(name) ?? moved.get(name) ?? name);
   const out = {};
   for (const [name, list] of Object.entries(data)) {
     out[name] = name === "plan"
@@ -231,4 +235,48 @@ export function compareBuckets(current, proposed) {
     removed: current.filter((c) => !matched.has(c.name)).map((c) => ({ name: c.name, mergedInto: mostly(c.areas, buckets) })),
   };
   return { buckets, unchanged: Object.values(changes).every((l) => !l.length), ...changes };
+}
+
+// The buckets in force: the applied grouping, or until there is one, the default buckets and the areas they cover.
+export function effectiveBuckets(rows) {
+  if (rows.some((r) => r.area && r.bucket)) return rows;
+  return Object.entries(DEFAULT_BUCKET_AREAS).flatMap(([bucket, areas]) => areas.map((area) => ({ area, bucket })));
+}
+
+// A demand row's areas. Survey answers are per bucket and name the picked areas in their areas column ("; ");
+// rows from before that name a single area as their expertise. Domain expertise is no area.
+export function demandAreas(row) {
+  if (row.expertise === "Domain expertise") return [];
+  const listed = String(row.areas ?? "").split(";").map((a) => a.trim()).filter(Boolean);
+  return listed.length ? listed : [row.expertise].filter(Boolean);
+}
+
+const words = (s) => s.toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g, " ").trim().split(" ").filter((w) => w.length > 1);
+// Words match when one starts the other, as "deploy" and "deployment".
+const shared = (a, b) => a.filter((w) => b.some((t) => t.startsWith(w) || w.startsWith(t))).length;
+
+// Buckets a write-in may belong to, best first: the bucket of an area of that exact name, else every bucket whose
+// name or areas share words with it. The project lead confirms one; nothing is assigned silently.
+export function suggestBuckets(name, rows) {
+  const exact = rows.find((r) => r.area.toLowerCase() === name.trim().toLowerCase());
+  if (exact) return [exact.bucket];
+  const typed = words(name);
+  const score = new Map();
+  for (const r of rows) {
+    const s = Math.max(shared(typed, words(r.area)), shared(typed, words(r.bucket)));
+    if (s) score.set(r.bucket, Math.max(score.get(r.bucket) ?? 0, s));
+  }
+  return [...score].sort((a, b) => b[1] - a[1]).map(([bucket]) => bucket);
+}
+
+// picked: [{ name, bucket }] in picking order, bucket null for a write-in that fits none. One section per bucket,
+// in the order its first area was picked; an unplaced write-in gets a section of its own until it is grouped.
+export function surveySections(picked) {
+  const sections = new Map();
+  for (const { name, bucket } of picked) {
+    const key = bucket ?? name;
+    if (!sections.has(key)) sections.set(key, { bucket: key, areas: [], grouped: Boolean(bucket) });
+    sections.get(key).areas.push(name);
+  }
+  return [...sections.values()];
 }

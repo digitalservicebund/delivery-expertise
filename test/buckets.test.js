@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { compareBuckets, bucketPrompt, parseBuckets, readBuckets, bucketRows, areasToGroup, pending, topAreas, inBuckets, BUCKET_HEADER, HISTORY_HEADER, nextHistory, aliasesOf, renamedTo, inferHistory } from "../src/buckets.js";
+import { compareBuckets, bucketPrompt, parseBuckets, readBuckets, bucketRows, areasToGroup, pending, topAreas, inBuckets, BUCKET_HEADER, HISTORY_HEADER, nextHistory, aliasesOf, renamedTo, inferHistory, effectiveBuckets, suggestBuckets, demandAreas, surveySections } from "../src/buckets.js";
 import { liveLayout } from "../src/sheets.js";
 import { AREA_NAMES, DEFAULT_BUCKETS, DEFAULT_BUCKET_AREAS, RETIRED_DEFAULT_AREAS } from "../src/areas.js";
 
@@ -214,4 +214,42 @@ test("every suggested area is in exactly one default bucket", () => {
   const all = Object.values(DEFAULT_BUCKET_AREAS).flat();
   assert.deepEqual([...all].sort(), [...AREA_NAMES].sort());
   for (const areas of Object.values(RETIRED_DEFAULT_AREAS)) for (const a of areas) assert.ok(AREA_NAMES.includes(a), a);
+});
+
+test("until a grouping is applied, the default buckets and their areas are the buckets", () => {
+  const rows = effectiveBuckets([]);
+  assert.deepEqual([...new Set(rows.map((r) => r.bucket))], DEFAULT_BUCKETS);
+  assert.ok(rows.some((r) => r.area === "On-call & incident response" && r.bucket === "Software lifecycle"));
+  const applied = [{ area: "React", bucket: "Web" }];
+  assert.equal(effectiveBuckets(applied), applied);
+});
+
+test("rows already naming a current bucket keep it, even when an area of that name sits elsewhere", () => {
+  const rows = [{ area: "Backend development", bucket: "Backend" }, { area: "Backend", bucket: "Platform" }, { area: "Kubernetes", bucket: "Platform" }];
+  const out = inBuckets({ demand: [{ expertise: "Backend" }, { expertise: "Kubernetes" }] }, rows);
+  assert.deepEqual(out.demand.map((r) => r.expertise), ["Backend", "Platform"]);
+});
+
+test("a write-in is matched to buckets by name: an exact area first, else buckets sharing words with it", () => {
+  const rows = effectiveBuckets([]);
+  assert.deepEqual(suggestBuckets("search", rows), ["Data & AI"]);
+  assert.deepEqual(suggestBuckets("React frontend", rows).slice(0, 1), ["Frontend"]);
+  assert.equal(suggestBuckets("Kubernetes operations", rows)[0], "Software lifecycle");
+  assert.deepEqual(suggestBuckets("Rust", rows), []);
+});
+
+test("a demand row's areas: the areas column, or the expertise itself in rows from before buckets", () => {
+  assert.deepEqual(demandAreas({ expertise: "Frontend", areas: "React; Design systems" }), ["React", "Design systems"]);
+  assert.deepEqual(demandAreas({ expertise: "Kubernetes", areas: "" }), ["Kubernetes"]);
+  assert.deepEqual(demandAreas({ expertise: "Domain expertise", domain: "Tax" }), []);
+});
+
+test("picked areas become one survey section per bucket, in picking order", () => {
+  assert.deepEqual(surveySections([
+    { name: "React", bucket: "Frontend" }, { name: "Postgres", bucket: "Backend" }, { name: "Design systems", bucket: "Frontend" }, { name: "Rust", bucket: null },
+  ]), [
+    { bucket: "Frontend", areas: ["React", "Design systems"], grouped: true },
+    { bucket: "Backend", areas: ["Postgres"], grouped: true },
+    { bucket: "Rust", areas: ["Rust"], grouped: false },
+  ]);
 });

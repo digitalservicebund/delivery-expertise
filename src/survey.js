@@ -1,6 +1,7 @@
 // The project survey as a working page. The team first picks the areas of expertise it needs from a word cloud
-// (sized by a best guess from its history, searchable, open to new areas). Only the picked areas get a grid.
-// On submit it shows the rows the answers would add to the Project Demand tab. Nothing is sent anywhere.
+// (sized by a best guess from its history, searchable, open to new areas). The questions are per bucket: picking
+// an area activates its bucket's grid. A new area is matched to a bucket by name, and the lead confirms which.
+// On submit it shows the rows the answers would add to the demand tab; live, it saves them.
 import { toCsv } from "./csv.js";
 import { load, currentMode, DATA_TABS, SHEET_LABEL } from "./source.js";
 import { whoAmI, appendRows, withSheet } from "./google.js";
@@ -8,6 +9,7 @@ import { DEMAND_HEADER } from "./sheets.js";
 import { teamsOf, projectsByTeam } from "./teams.js";
 import { relevance, matches } from "./cloud.js";
 import { AREAS, COP, SUPPORT_KEY } from "./areas.js";
+import { effectiveBuckets, suggestBuckets, demandAreas, surveySections, inBuckets } from "./buckets.js";
 import { METHODS as METHOD_LEVEL, PEOPLE as PEOPLE_COUNT, LEVELS, supplyAsOf, assessedCoverage, WORKING_DAYS_PER_QUARTER, UTILISATION, BOOKABLE_DAYS_PER_QUARTER } from "./model.js";
 
 const QUARTER = "2027-Q1";
@@ -170,7 +172,8 @@ function rowsFor(form, team) {
   // "Anything we should know?" is about the whole submission, so every row carries it.
   const notes = form.elements.notes.value.trim();
   for (const section of document.querySelectorAll("#areas [data-area]")) {
-    const { id, expertise, domain } = section.dataset;
+    // expertise: the bucket (or the domain expertise); picked: the areas the team picked in it.
+    const { id, expertise, domain, picked: areasPicked = "" } = section.dataset;
     const specifics = form.elements[`${id}-specifics`].value.trim();
     const comment = form.elements[`${id}-comment`].value.trim();
     for (const method of METHODS) {
@@ -190,6 +193,7 @@ function rowsFor(form, team) {
         specifics,
         comment,
         notes,
+        areas: areasPicked,
       });
     }
   }
@@ -199,24 +203,32 @@ function rowsFor(form, team) {
 // Missing datasets come back empty: the survey still works, just without suggestions or a team list.
 // Live reads the teams tab instead of staffing: staffing sits in the discipline sheet, which project leads
 // can't open. The teams tab says who may answer for which team.
-const LIVE_TABS = [...DATA_TABS.filter((n) => n !== "staffing"), "teams"];
-const session = await load((await currentMode()) === "live" ? LIVE_TABS : DATA_TABS);
+const BUCKET_TABS = ["buckets", "bucket-history"];
+const LIVE_TABS = [...DATA_TABS.filter((n) => n !== "staffing"), "teams", ...BUCKET_TABS];
+const session = await load((await currentMode()) === "live" ? LIVE_TABS : [...DATA_TABS, ...BUCKET_TABS]);
 const sets = session.data;
 const [staffing, plan, demand, activity, assessments] = ["staffing", "discipline-plan", "project-demand", "historical-activity", "expertise-assessments"].map((n) => sets[n] ?? []);
+// The buckets in force (the default ten until a grouping is applied) and which bucket each area is in.
+const bucketRows = effectiveBuckets(sets.buckets ?? []);
+const bucketOfArea = new Map(bucketRows.map((r) => [r.area, r.bucket]));
+const bucketNames = [...new Set(bucketRows.map((r) => r.bucket))];
+// Earlier answers, activity and ratings per bucket, whatever they were recorded under.
+const byBucket = inBuckets({ demand, activity, assessments }, bucketRows, sets["bucket-history"] ?? []);
 // Prototype: the latest answered quarter stands in for "last time", the latest recorded quarter for "the last three months".
 const lastAnswered = demand.map((r) => r.quarter).sort().at(-1);
 const lastRecorded = activity.map((r) => r.quarter).sort().at(-1);
 const cap = (m) => m.charAt(0).toUpperCase() + m.slice(1);
+// Keys: "domain" for domain expertise, otherwise the slug of an area or bucket name.
 const areaKey = (r) => (r.expertise === "Domain expertise" ? "domain" : slug(r.expertise));
 function previousFor(team, key) {
-  const rows = demand.filter((r) => r.quarter === lastAnswered && r.team === team && areaKey(r) === key);
+  const rows = byBucket.demand.filter((r) => r.quarter === lastAnswered && r.team === team && areaKey(r) === key);
   return { quarter: lastAnswered, ...Object.fromEntries(rows.map((r) => [cap(r.method), r])) };
 }
 // Recorded person-days to the nearest people option. Under half a person counts as nothing.
 function hintFor(team, key) {
   const hint = { quarter: lastRecorded };
   const days = {};
-  for (const r of activity.filter((r) => r.quarter === lastRecorded && r.team === team && areaKey(r) === key)) {
+  for (const r of byBucket.activity.filter((r) => r.quarter === lastRecorded && r.team === team && areaKey(r) === key)) {
     days[r.method] = (days[r.method] ?? 0) + Number(r.person_days);
   }
   hint.work = {};
@@ -240,8 +252,14 @@ const myTeams = teamsOf(sets.teams ?? [], me);
 const teams = live ? myTeams.map((t) => t.team) : [...new Set(staffing.filter((r) => r.quarter === latest).map((r) => r.team))].sort();
 // Ratings as known now, placed in the team each person is staffed on. Only counts reach the page, never names.
 const teamNow = new Map(staffing.filter((r) => r.quarter === latest).map((r) => [r.person, r.team]));
-const ratings = supplyAsOf(assessments.map((r) => ({ ...r, expertise: r.domain ? `${r.expertise}: ${r.domain}` : r.expertise })), "9999", (p) => teamNow.get(p));
-for (const s of ratings.levels) s.key = s.expertise.startsWith("Domain expertise") ? "domain" : slug(s.expertise);
+// Two views: per area for sizing the word cloud, per bucket for the grids' suggestions.
+const ratingsOf = (rows) => {
+  const r = supplyAsOf(rows.map((x) => ({ ...x, expertise: x.domain ? `${x.expertise}: ${x.domain}` : x.expertise })), "9999", (p) => teamNow.get(p));
+  for (const s of r.levels) s.key = s.expertise.startsWith("Domain expertise") ? "domain" : slug(s.expertise);
+  return r;
+};
+const ratings = ratingsOf(byBucket.assessments);
+const areaRatings = ratingsOf(assessments);
 const domainOf = new Map(plan.filter((r) => r.kind === "domain").map((r) => [r.subject, r.value]));
 const projectOf = new Map([...staffing.map((r) => [r.team, r.project]), ...projectsByTeam(sets.teams ?? [])]);
 
@@ -273,23 +291,30 @@ let catalogue = [];
 let picked = [];
 const built = new Map();
 
+// The cloud offers areas: the suggested ones, every area in a bucket, every area a team has added before, and the
+// project's domain. Each knows its bucket; a write-in another team placed keeps the bucket that team chose.
 function catalogueFor(team) {
   const domain = domainOf.get(projectOf.get(team));
-  const list = AREAS.map(([name, support, examples]) => ({ id: slug(name), name, expertise: name, subject: name, support, examples }));
+  const list = AREAS.map(([name, support, examples]) => ({ id: slug(name), name, bucket: bucketOfArea.get(name) ?? null, support, examples }));
   if (domain) list.push({
-    id: "domain", name: `Domain expertise: ${domain}`, expertise: "Domain expertise", domain, subject: `${domain} domain knowledge`,
-    examples: DOMAIN_EXAMPLES[domain] ?? GENERIC_DOMAIN, note: "From your project's domain. If your team also works in another domain, add it.",
+    id: "domain", name: `Domain expertise: ${domain}`, domain, examples: DOMAIN_EXAMPLES[domain] ?? GENERIC_DOMAIN,
+    note: "From your project's domain. If your team also works in another domain, add it.",
   });
-  // Areas other teams have added before are offered too.
-  const known = new Set(list.map((a) => a.expertise));
-  for (const name of new Set(demand.map((r) => r.expertise))) if (!known.has(name)) list.push(customArea(name));
+  const known = new Set(list.map((a) => a.name));
+  const placed = new Map(demand.flatMap((r) => demandAreas(r).map((a) => [a, bucketNames.includes(r.expertise) ? r.expertise : null])));
+  for (const name of [...bucketOfArea.keys(), ...placed.keys()]) {
+    if (!known.has(name)) list.push(customArea(name, bucketOfArea.get(name) ?? placed.get(name) ?? null));
+    known.add(name);
+  }
   return list;
 }
-const customArea = (name) => ({ id: `x-${slug(name)}`, name, expertise: name, subject: name, support: COP, examples: GENERIC_CUSTOM, custom: true });
+const customArea = (name, bucket) => ({ id: `x-${slug(name)}`, name, bucket, support: COP, examples: GENERIC_CUSTOM, custom: true });
 
 // The best guess at what this team needs, from its last answers, booked work and ratings, then discipline-wide demand.
+// Per area: a row per bucket counts for each area it names.
 function weightsFor(team, historical) {
-  const tally = (rows, value) => rows.reduce((acc, r) => ((acc[areaKey(r)] = (acc[areaKey(r)] ?? 0) + value(r)), acc), {});
+  const add = (acc, key, v) => ((acc[key] = (acc[key] ?? 0) + v), acc);
+  const tally = (rows, value) => rows.reduce((acc, r) => (r.expertise === "Domain expertise" ? add(acc, "domain", value(r)) : demandAreas(r).reduce((a, name) => add(a, slug(name), value(r)), acc)), {});
   const last = demand.filter((r) => r.quarter === lastAnswered);
   const mine = (rows) => rows.filter((r) => r.team === team);
   const signals = {
@@ -297,12 +322,12 @@ function weightsFor(team, historical) {
     team: team ? {
       demand: historical ? tally(mine(last), (r) => PEOPLE_COUNT[r.people] ?? 0) : {},
       days: tally(mine(activity.filter((r) => r.quarter === lastRecorded)), (r) => Number(r.person_days)),
-      rated: tally(ratings.levels.filter((s) => s.team === team), () => 1),
+      rated: tally(areaRatings.levels.filter((s) => s.team === team), () => 1),
     } : {},
   };
   return relevance(catalogue.map(weightKey), signals);
 }
-// Areas added by teams are keyed like their survey rows: by the slug of their name.
+// Areas are keyed by the slug of their name, like the areas in survey rows.
 const weightKey = (a) => (a.id === "domain" ? "domain" : a.id.replace(/^x-/, ""));
 
 function renderCloud() {
@@ -328,36 +353,86 @@ function toggle(id) {
   renderPicked();
 }
 
+// A new area: an existing one of that name is simply picked. Otherwise the lead says which bucket it belongs to,
+// starting from the buckets whose names or areas share words with it. "None of these" keeps it in a section of its
+// own until a discipline head regroups.
+const chooser = document.createElement("div");
+chooser.className = "write-in";
+chooser.hidden = true;
+addButton.after(chooser);
 function addCustom() {
   const name = search.value.trim();
   if (!name) return;
   const existing = catalogue.find((a) => a.name.toLowerCase() === name.toLowerCase());
-  const area = existing ?? customArea(name);
-  if (!existing) catalogue.push(area);
-  if (!picked.includes(area.id)) picked.push(area.id);
-  search.value = "";
-  renderCloud();
-  renderPicked();
+  if (existing) {
+    if (!picked.includes(existing.id)) picked.push(existing.id);
+    search.value = "";
+    chooser.hidden = true;
+    renderCloud();
+    return renderPicked();
+  }
+  const suggested = suggestBuckets(name, bucketRows).slice(0, 3);
+  const place = (bucket) => {
+    const area = customArea(name, bucket);
+    catalogue.push(area);
+    picked.push(area.id);
+    search.value = "";
+    chooser.hidden = true;
+    renderCloud();
+    renderPicked();
+  };
+  const choice = (label, bucket, cls = "") => {
+    const button = $("button", { type: "button", class: cls }, label);
+    button.addEventListener("click", () => place(bucket));
+    return button;
+  };
+  const others = $("select", { "aria-label": "Another bucket" }, $("option", { value: "" }, "Another bucket…"),
+    ...bucketNames.filter((n) => !suggested.includes(n)).map((n) => $("option", { value: n }, n)));
+  others.addEventListener("change", () => others.value && place(others.value));
+  chooser.replaceChildren(
+    $("p", {}, suggested.length ? `Which bucket does “${name}” belong to? Closest by name first.` : `No bucket's name matches “${name}”. Which does it belong to?`),
+    $("div", { class: "choices" }, ...suggested.map((n) => choice(n, n)), others, choice("None of these", null, "secondary")),
+  );
+  chooser.hidden = false;
 }
 
-// Step 2: one grid per picked area, in picking order.
+// Step 2: one grid per bucket with a picked area, in picking order, plus the domain's. A section is kept while its
+// bucket stays active, so answers survive picking and unpicking areas within it.
 function renderPicked() {
   const team = select.value;
   const historical = team && demoState.value === "historical";
-  areas.replaceChildren(...picked.map((id) => {
+  const chosen = picked.map((id) => catalogue.find((a) => a.id === id));
+  const domain = chosen.find((a) => a.id === "domain");
+  const sections = surveySections(chosen.filter((a) => a.id !== "domain").map((a) => ({ name: a.name, bucket: a.bucket })));
+  const nodes = sections.map(({ bucket, areas: names, grouped }) => {
+    const id = `b-${slug(bucket)}`;
     if (!built.has(id)) {
-      const area = catalogue.find((a) => a.id === id);
-      const key = weightKey(area);
+      // Examples and support come from the first picked area that has them.
+      const lead = names.map((n) => catalogue.find((a) => a.name === n)).find((a) => !a.custom) ?? {};
       built.set(id, areaSection({
-        ...area,
-        note: area.custom ? "A new area. Describe it below so we can group it with similar ones." : area.note,
-        previous: historical ? previousFor(team, key) : undefined,
-        hint: historical && !area.custom ? hintFor(team, key) : undefined,
+        id, name: bucket, expertise: bucket, subject: bucket, support: lead.support ?? COP, examples: lead.examples ?? GENERIC_CUSTOM,
+        note: grouped ? "" : "Not in any bucket yet. Describe it below so the discipline can group it with similar ones.",
+        previous: historical ? previousFor(team, slug(bucket)) : undefined,
+        hint: historical && grouped ? hintFor(team, slug(bucket)) : undefined,
       }));
     }
-    return built.get(id);
-  }));
-  if (!picked.length) areas.append($("section", { class: "muted" }, "Pick the areas your team needs above. Each one you pick gets its own questions here."));
+    const section = built.get(id);
+    section.dataset.picked = names.join("; ");
+    section.querySelector(".covers")?.remove();
+    section.querySelector("h2").after($("p", { class: "covers" }, `For what you picked: ${names.join(", ")}.`));
+    return section;
+  });
+  if (domain) {
+    if (!built.has("domain")) {
+      built.set("domain", areaSection({
+        ...domain, expertise: "Domain expertise", subject: `${domain.domain} domain knowledge`,
+        previous: historical ? previousFor(team, "domain") : undefined, hint: historical ? hintFor(team, "domain") : undefined,
+      }));
+    }
+    nodes.push(built.get("domain"));
+  }
+  areas.replaceChildren(...nodes);
+  if (!nodes.length) areas.append($("section", { class: "muted" }, "Pick the areas your team needs above. Each bucket you pick an area in gets its own questions here."));
 }
 
 function reset() {
@@ -367,8 +442,11 @@ function reset() {
   built.clear();
   renderCloud.weights = weightsFor(team, historical);
   // Areas the team answered last time start picked, so returning teams only review them.
-  picked = historical ? catalogue.filter((a) => demand.some((r) => r.quarter === lastAnswered && r.team === team && areaKey(r) === weightKey(a))).map((a) => a.id) : [];
+  const before = demand.filter((r) => r.quarter === lastAnswered && r.team === team);
+  const named = new Set(before.flatMap(demandAreas));
+  picked = historical ? catalogue.filter((a) => named.has(a.name) || (a.id === "domain" && before.some((r) => r.expertise === "Domain expertise"))).map((a) => a.id) : [];
   search.value = "";
+  chooser.hidden = true;
   renderCloud();
   renderPicked();
 }
