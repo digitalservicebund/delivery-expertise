@@ -19,6 +19,8 @@ const LIVE = {
   "expertise-assessments": ["aggregate", "supply"],
   staffing: ["discipline", "staffing"],
   teams: ["projects", "teams"],
+  // Which bucket each area is in: the IC form and supply are per bucket (src/buckets.js).
+  buckets: ["aggregate", "buckets"],
 };
 const MODE_KEY = "data-mode";
 const LABEL = { prototype: "Prototype data", live: "Live data", unconfigured: "Not set up" };
