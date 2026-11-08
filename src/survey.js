@@ -1,8 +1,10 @@
 // The project survey as a working page. The team first picks the areas of expertise it needs from a word cloud
 // (sized by a best guess from its history, searchable, open to new areas). Only the picked areas get a grid.
 // On submit it shows the rows the answers would add to the Project Demand tab. Nothing is sent anywhere.
-import { parseCsv, toCsv } from "./csv.js";
+import { toCsv } from "./csv.js";
+import { load, DATA_TABS } from "./source.js";
 import { relevance, matches } from "./cloud.js";
+import { AREAS, COP, SUPPORT_KEY } from "./areas.js";
 import { METHODS as METHOD_LEVEL, PEOPLE as PEOPLE_COUNT, LEVELS, supplyAsOf, assessedCoverage, WORKING_DAYS_PER_QUARTER, UTILISATION, BOOKABLE_DAYS_PER_QUARTER } from "./model.js";
 
 const QUARTER = "2027-Q1";
@@ -10,21 +12,6 @@ const METHODS = ["Operative", "Conceptual", "Strategic", "Comprehensive"];
 const PEOPLE = [["", "Not needed"], ["1", "1 person"], ["2", "2 people"], ["3", "3 people"], ["5", "5 people"]];
 // Coverage per row: is this working method covered on the team today?
 const COVERAGE = [["critical", "Critical"], ["under", "Under"], ["adequate", "Adequate"], ["over", "Over"]];
-const COP = "the community of practice";
-const SUPPORT_KEY = { "the platform team": "platform", "the legal and IT security team": "legal", [COP]: "cop" };
-// Name, support the area can also draw on, and one example per working method.
-const AREAS = [
-  ["Discovery & Inception", COP, ["Run technical spikes and prototypes", "Map an existing system and its constraints", "Shape the technical approach, options and estimates for a new product", "Advise ministries on what is technically feasible before a project starts"]],
-  ["Frontend", COP, ["Build components to the design system", "Plan the structure of a new journey", "Set frontend standards across teams", "Shape the shared design system across government services"]],
-  ["Backend", COP, ["Build endpoints to the team's conventions", "Design the data model and service boundaries for a feature", "Set API guidelines across teams, decide build or buy", "Shape interoperability standards with other ministries"]],
-  ["Architecture", COP, ["Document and maintain existing decisions", "Design the architecture of a new component", "Own the system architecture and its trade-offs", "Align architecture with federal IT strategy and shared platforms"]],
-  ["Security", COP, ["Patch dependencies, follow secure coding guidance", "Threat-model a new integration", "Own the security architecture and its trade-offs", "Align with BSI requirements and cross-government security developments"]],
-  ["DevOps, CI/CD & Infrastructure", "the platform team", ["Maintain build and deployment pipelines, environments and monitoring", "Design CI/CD, environments and release processes for a new service", "Set infrastructure and delivery standards and hosting choices", "Shape sovereign cloud and shared platform strategy"]],
-  ["Quality & Documentation", COP, ["Write automated tests, keep developer and API documentation current", "Plan the test and documentation approach for a release or handover", "Set quality and documentation standards across teams", "Shape quality and knowledge-sharing practice across the organisation"]],
-  ["Data & AI", COP, ["Build data pipelines and queries, integrate a model, write and evaluate prompts", "Design a data model, migration, or agent and retrieval workflow with evaluation", "Own data architecture and governance, or decide models, hosting and safeguards", "Shape data sharing and responsible AI use across government"]],
-  ["Compliance & Privacy", "the legal and IT security team", ["Apply data protection requirements in code", "Design consent, retention and audit flows", "Own the product's GDPR and compliance approach", "Shape compliance practice with data protection officers across ministries"]],
-  ["Accessibility", COP, ["Fix audit findings, test with assistive technology", "Plan accessible patterns for a new journey", "Define the product's accessibility strategy and BITV compliance route", "Influence accessibility standards across government services"]],
-];
 // The domain section is prefilled from the project's domain, kept by the discipline head.
 const DOMAIN_EXAMPLES = {
   Legislation: ["Implement rules from legal texts correctly", "Model legal processes and their edge cases", "Own how the product interprets and tracks legal change", "Shape how legislation is made digital-ready across government"],
@@ -203,14 +190,9 @@ function rowsFor(form, team) {
   return rows;
 }
 
-async function load(path) {
-  const res = await fetch(path);
-  return res.ok ? parseCsv(await res.text()) : [];
-}
-
-const [staffing, plan, demand, activity, assessments] = await Promise.all(
-  ["staffing", "discipline-plan", "project-demand", "historical-activity", "expertise-assessments"].map((f) => load(`data/${f}.csv`)),
-);
+// Missing datasets come back empty: the survey still works, just without suggestions or a team list.
+const { data: sets } = await load(DATA_TABS);
+const [staffing, plan, demand, activity, assessments] = ["staffing", "discipline-plan", "project-demand", "historical-activity", "expertise-assessments"].map((n) => sets[n] ?? []);
 // Prototype: the latest answered quarter stands in for "last time", the latest recorded quarter for "the last three months".
 const lastAnswered = demand.map((r) => r.quarter).sort().at(-1);
 const lastRecorded = activity.map((r) => r.quarter).sort().at(-1);

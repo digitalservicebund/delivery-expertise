@@ -26,7 +26,14 @@
     .status span { display: inline-block; padding: 0.05rem 0.5rem; border-radius: 999px; background: #e6f4ea; color: #137333; }
     .status span.planned { background: #f1f3f4; color: var(--muted); }
     div.card { border-style: dashed; }
+    #sheet-setup { background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 1rem 1.25rem; }
+    #sheet-setup .actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+    #sheet-setup button { font: inherit; padding: 0.4rem 1rem; border: 0; border-radius: 4px; background: var(--accent); color: #fff; cursor: pointer; }
+    #sheet-setup button:disabled { opacity: 0.6; cursor: wait; }
+    #sheet-setup output { display: block; margin-top: 0.5rem; }
+    #sheet-setup output ul { margin: 0.25rem 0; padding-left: 1.25rem; }
   </style>
+  <script type="module" src="src/portal.js"></script>
 </head>
 <body>
   <main>
@@ -86,6 +93,16 @@
       </div>
     </section>
 
+    <section id="sheet-setup" aria-labelledby="setup-heading" hidden>
+      <h2 id="setup-heading">Sheets</h2>
+      <p class="muted"><strong>Load dummy data</strong> replaces the prototype sheet's contents with freshly generated data. <strong>Set up live sheets</strong> adds the tabs, header rows and imports the live sheets need. It never removes or overwrites answers. <strong>Set up IC form</strong> sets the self-assessment form's questions to the current top areas, keeping existing questions so their answers stay in the same columns. All need edit access.</p>
+      <div class="actions">
+        <button type="button">Load dummy data</button>
+        <button type="button">Set up live sheets</button>
+        <button type="button">Set up IC form</button>
+      </div>
+      <output class="muted" aria-live="polite"></output>
+    </section>
   </main>
 </body>
 </html>

@@ -1,13 +1,14 @@
-import { parseCsv } from "./csv.js";
+import { load } from "./source.js";
 import { personaView, SIGNAL } from "./persona.js";
 import { buildModel, change, LEVELS, METHOD_NAME, personalRatings, reconciledStatus, DOMAIN } from "./model.js";
 
+// The model's inputs, and the dataset each is read from.
 const SOURCES = {
-  demand: "data/project-demand.csv",
-  assessments: "data/expertise-assessments.csv",
-  activity: "data/historical-activity.csv",
-  plan: "data/discipline-plan.csv",
-  staffing: "data/staffing.csv",
+  demand: "project-demand",
+  assessments: "expertise-assessments",
+  activity: "historical-activity",
+  plan: "discipline-plan",
+  staffing: "staffing",
 };
 const STATUS_LABEL = { short: "Critical shortage", strained: "Undersupplied", overqualified: "Overqualified", fragile: "Covered but fragile", covered: "Well covered", surplus: "Oversupplied", none: "Not demanded" };
 const SEVERITY = ["short", "strained", "fragile", "overqualified", "surplus", "covered"];
@@ -860,13 +861,11 @@ svg.addEventListener("click", () => state.selected && select(null));
 let redraw = () => {};
 new ResizeObserver(() => redraw()).observe(svg);
 
-const text = async (url) => {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`${url}: ${res.status}`);
-  return res.text();
-};
 try {
-  const loaded = Object.fromEntries(await Promise.all(Object.entries(SOURCES).map(async ([k, url]) => [k, parseCsv(await text(url))])));
+  const { data: sets } = await load(Object.values(SOURCES));
+  const loaded = Object.fromEntries(Object.entries(SOURCES).map(([k, name]) => [k, sets[name]]));
+  // Everything is drawn per person and team: without staffing there is nothing to draw. Live has none yet.
+  if (!loaded.staffing.length) throw new Error("No staffing data in this mode yet.");
   data = loaded;
   personas = pickPersonas(loaded);
   // ?view=ic opens as an engineer, so the portal can link straight to the individual view.

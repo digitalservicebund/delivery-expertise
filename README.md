@@ -18,6 +18,8 @@ To update the staffing seed, update 1Password, then:
 base64 -i teams.csv | gh secret set TEAMS_CSV
 ```
 
+Live storage is moving to Google Sheets and a Google Form, read and written in the browser with each person's own Google account. Setup and sharing: [docs/google-setup.md](docs/google-setup.md). The IDs go in the git-ignored `public/config.js` (copy `public/config.example.js`; values in 1Password).
+
 ## Inputs
 
 Five CSV files in `data/`: the project survey, assessments, activity, the discipline survey and the staffing per quarter. Every row carries its quarter. They are generated from `teams.csv`, the real, anonymised current staffing, which stays out of the repo.
