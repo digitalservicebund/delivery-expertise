@@ -6,6 +6,7 @@ import { token, hasToken, canEdit, readTabs, replaceTabs, setUpTabs, withSheet, 
 import { liveLayout } from "./sheets.js";
 import { FORM_INFO, formItems, formRequests, branchRequest, supplyFormula } from "./icform.js";
 import { AREA_NAMES, DEFAULT_BUCKETS } from "./areas.js";
+import { formRows } from "./prefill.js";
 import { compareBuckets, bucketPrompt, parseBuckets, readBuckets, bucketRows, areasToGroup, pending, topAreas } from "./buckets.js";
 
 const mode = await currentMode();
@@ -110,6 +111,12 @@ async function setUpIcForm(config, t) {
     ...formRequests(form.items ?? [], formItems(areas)),
   ]);
   await updateForm(t, id, [branchRequest(updated.items)]);
+  // The IC page fills the form through a pre-filled link. Engineers can't read the form, so its link and entry
+  // IDs go to the aggregate sheet, which they can.
+  status.replaceChildren("Writing the form's link for the IC page…");
+  const aggregate = config.sheets.aggregate;
+  await withSheet(config, t, aggregate, SHEET_LABEL.aggregate,
+    () => replaceTabs(t, aggregate, { form: formRows(updated.items, updated.responderUri ?? form.responderUri) }));
   let email = "Verified email collection: on.";
   try {
     await updateForm(t, id, [{ updateSettings: { settings: { emailCollectionType: "VERIFIED" } , updateMask: "emailCollectionType" } }]);
@@ -122,6 +129,7 @@ async function setUpIcForm(config, t) {
   const list = document.createElement("ul");
   list.append(...[
     `Questions: ${updated.items.length} items, ${areas.length} areas in the grid.`,
+    "IC page: the form's link and entry IDs are in the aggregate sheet's form tab, for pre-filled links.",
     email,
   ].map((l) => Object.assign(document.createElement("li"), { textContent: l })));
   status.replaceChildren("Done.", list, "Google allows these only by hand, in ", open,

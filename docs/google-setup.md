@@ -119,6 +119,8 @@ The first time each `IMPORTRANGE` source is used, the sheet's owner must click *
 
 **`buckets`** copies the discipline sheet's `buckets` tab: area and bucket names only. In live mode the discipline view maps demand and planned adjustments to these buckets, so they meet supply, which is counted per bucket. Areas in no bucket and domain expertise stay as they are.
 
+**`form`** is written by **Set up IC form**, not imported: the form's public link and the entry ID of "Whose expertise" and each grid row (`role | name | entry`). The IC page (`ic.html`) reads it to open the form with the person's answers filled in, since engineers can't read the form itself. An entry ID is taken to be the Forms API's hexadecimal `questionId` in decimal (`src/prefill.js`). To check, compare one with the form editor's **Get pre-filled link**. Re-run **Set up IC form** whenever the buckets change.
+
 Peer validation is not aggregated yet. The plan is to count, per area and working method, the people whose self-assessment is matched or exceeded by at least one peer rating, with the same suppression below 3.
 
 ## Not secured
