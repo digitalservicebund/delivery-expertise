@@ -42,11 +42,13 @@ export function staffingFromSnapshot(rows, quarter) {
 // The aggregate sheet's supply counts as self-ratings by made-up respondents S1, S2, … per area. Respondent
 // numbers restart in every area, so the same number in two areas says nothing about one person.
 // A blank count (suppressed, or nobody) adds no one.
+// Supply rows for the domain grid are labelled "Domain expertise: <domain>".
+const domainOf = (area) => (area.startsWith("Domain expertise: ") ? { expertise: "Domain expertise", domain: area.slice(18) } : { expertise: area, domain: "" });
 export function assessmentsFromSupply(rows, quarter) {
   return rows.flatMap((r) => {
     let n = 0;
     return Object.entries(LEVEL_OF).flatMap(([column, level]) => Array.from({ length: Number(r[column]) || 0 }, () => ({
-      quarter, respondent: `S${++n}`, expertise: r.area, domain: "", assessor: "self", level, team: DISCIPLINE_WIDE,
+      quarter, respondent: `S${++n}`, ...domainOf(r.area), assessor: "self", level, team: DISCIPLINE_WIDE,
     })));
   });
 }

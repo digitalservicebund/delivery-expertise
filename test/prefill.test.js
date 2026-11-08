@@ -53,3 +53,8 @@ test("saved answers for former buckets move to the bucket they went to, the high
   const saved = { Infra: "Operative", Ops: "Strategic", Web: "Conceptual", Frontend: "Learning", Gone: "Comprehensive" };
   assert.deepEqual(followBuckets(saved, ["Platform", "Frontend", "Data"], history), { Platform: "Strategic", Frontend: "Learning", Data: "" });
 });
+
+test("domain grid rows are filled as domain expertise", () => {
+  const withDomain = [...items, { title: "Domain expertise", questionGroupItem: { questions: [{ questionId: "00000020", rowQuestion: { title: "Legislation" } }] } }];
+  assert.deepEqual(formRows(withDomain, uri).at(-1), { role: "area", name: "Domain expertise: Legislation", entry: "32" });
+});

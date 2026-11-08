@@ -1,7 +1,7 @@
 // Linking the IC page to the IC form with the person's answers filled in. Set up IC form writes the form's public
 // link and the entry ID of each question the page fills to the aggregate sheet's form tab, which everyone can read;
 // engineers can't read the form itself. Pure, so it runs in tests.
-import { WHOSE, MYSELF, RATINGS } from "./icform.js";
+import { WHOSE, MYSELF, RATINGS, DOMAIN_GRID } from "./icform.js";
 
 export const FORM_HEADER = ["role", "name", "entry"];
 
@@ -13,7 +13,9 @@ export function formRows(items, responderUri) {
   const rows = [{ role: "url", name: "", entry: responderUri }];
   for (const item of items) {
     if (item.title === WHOSE && item.questionItem) rows.push({ role: "whose", name: WHOSE, entry: entryOf(item.questionItem.question.questionId) });
-    for (const q of item.questionGroupItem?.questions ?? []) rows.push({ role: "area", name: q.rowQuestion.title, entry: entryOf(q.questionId) });
+    // The domain grid's rows are named as the pages name domain expertise: "Domain expertise: <domain>".
+    const prefix = item.title === DOMAIN_GRID ? `${DOMAIN_GRID}: ` : "";
+    for (const q of item.questionGroupItem?.questions ?? []) rows.push({ role: "area", name: prefix + q.rowQuestion.title, entry: entryOf(q.questionId) });
   }
   return rows;
 }

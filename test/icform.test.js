@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { formItems, formRequests, branchRequest, supplyFormula, WHOSE, GRID, MIN_GROUP } from "../src/icform.js";
+import { formItems, formRequests, branchRequest, supplyFormula, WHOSE, GRID, DOMAIN_GRID, MIN_GROUP } from "../src/icform.js";
 
 const kinds = (requests) => requests.map((r) => Object.keys(r)[0]);
 
@@ -53,7 +53,22 @@ test("the supply formula finds columns by header and suppresses small counts", (
   assert.ok(f.includes(`IF(n < ${MIN_GROUP}, "", n)`));
   // Older buckets that went into an area are counted with it, from their own response columns.
   const merged = supplyFormula("S", "T", ["Platform"], { Platform: ["Infra", "Ops"] });
-  assert.ok(merged.includes(`{"Platform|Infra|Ops"}`));
+  assert.ok(merged.includes(`{"Expertise [Platform]|Expertise [Infra]|Expertise [Ops]"}`));
+  // Domains are their own grid; their rows say which domain.
+  const domains = supplyFormula("S", "T", ["Web"], {}, ["Legislation"]);
+  assert.ok(domains.includes(`{"Web";"Domain expertise: Legislation"}`));
+  assert.ok(domains.includes(`{"Expertise [Web]";"Domain expertise [Legislation]"}`));
+  // Every column with a matching header counts, so duplicates from editing the form are reconciled.
+  assert.ok(f.includes("FILTER(SEQUENCE(1, COLUMNS(h)), ISNUMBER(XMATCH(h, SPLIT(INDEX(names, i, 1)"));
   // Only a missing area column is caught. Everything else, like an import awaiting access, must show.
   assert.ok(!f.includes("IFERROR"));
+});
+
+test("domains get a grid of their own after the areas, only when there are any", () => {
+  const titles = (items) => items.map((i) => i.title);
+  assert.ok(!titles(formItems(["Web"])).includes(DOMAIN_GRID));
+  const items = formItems(["Web"], ["Legislation", "Justice and courts"]);
+  const grid = items[titles(items).indexOf(DOMAIN_GRID)];
+  assert.equal(titles(items).indexOf(DOMAIN_GRID), titles(items).indexOf(GRID) + 1);
+  assert.deepEqual(grid.questionGroupItem.questions.map((q) => q.rowQuestion.title), ["Legislation", "Justice and courts"]);
 });

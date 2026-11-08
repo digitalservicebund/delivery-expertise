@@ -59,6 +59,13 @@ async function responsesTab(config, t) {
   return tab;
 }
 
+// The policy domains, from the discipline plan's domain rows (project → domain): the IC form's domain grid.
+async function readDomains(config, t) {
+  const id = config.sheets.discipline;
+  const { rows } = await withSheet(config, t, id, SHEET_LABEL.discipline, () => readTabs(t, id, ["plan"]));
+  return [...new Set(rows.plan.filter((r) => r.kind === "domain" && r.value).map((r) => r.value))].sort();
+}
+
 // The current buckets from the discipline sheet, the names the IC form and supply use, and where former buckets went.
 // sheet: "discipline" holds the real buckets; "prototype" holds the dummy ones, written by the panel in prototype mode.
 async function readBucketTabs(config, t, sheet = "discipline") {
@@ -97,7 +104,7 @@ async function setUpLiveSheets(config, t) {
     const tab = await responsesTab(config, t);
     lines.push(`IC responses sheet: counting from the “${tab}” tab`);
     const fullHistory = [...history, ...(await recoverHistory(config, t, tab, buckets, history, lines))];
-    layout.aggregate.supply = { formula: supplyFormula(config.sheets.icResponses, tab, areas, aliasesOf(fullHistory)) };
+    layout.aggregate.supply = { formula: supplyFormula(config.sheets.icResponses, tab, areas, aliasesOf(fullHistory), await readDomains(config, t)) };
   } catch (err) {
     lines.push(`aggregate sheet, supply: skipped. ${err.message}`);
   }
@@ -123,12 +130,13 @@ async function setUpIcForm(config, t) {
   const id = config.icFormId;
   status.replaceChildren("Reading the top areas…");
   const areas = topAreas((await readBucketTabs(config, t)).buckets, DEFAULT_BUCKETS);
+  const domains = await readDomains(config, t);
   status.replaceChildren("Reading the IC form…");
   const form = await withSheet(config, t, id, "IC form", () => getForm(t, id), "FORMS");
   status.replaceChildren("Updating the questions…");
   const { form: updated } = await updateForm(t, id, [
     { updateFormInfo: { info: FORM_INFO, updateMask: "title,description" } },
-    ...formRequests(form.items ?? [], formItems(areas)),
+    ...formRequests(form.items ?? [], formItems(areas, domains)),
   ]);
   await updateForm(t, id, [branchRequest(updated.items)]);
   // The IC page fills the form through a pre-filled link. Engineers can't read the form, so its link and entry
@@ -148,7 +156,7 @@ async function setUpIcForm(config, t) {
   });
   const list = document.createElement("ul");
   list.append(...[
-    `Questions: ${updated.items.length} items, ${areas.length} areas in the grid.`,
+    `Questions: ${updated.items.length} items, ${areas.length} areas in the grid, ${domains.length} domains in the domain grid.`,
     "IC page: the form's link and entry IDs are in the aggregate sheet's form tab, for pre-filled links.",
     email,
   ].map((l) => Object.assign(document.createElement("li"), { textContent: l })));

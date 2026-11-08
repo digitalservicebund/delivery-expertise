@@ -5,6 +5,7 @@ export const WHOSE = "Whose expertise are you rating?";
 export const MYSELF = "Myself";
 export const COLLEAGUE = "A colleague";
 export const GRID = "Expertise";
+export const DOMAIN_GRID = "Domain expertise";
 export const RATINGS = [
   "Not my area",
   "Learning",
@@ -29,7 +30,8 @@ const radio = (values) => ({
   type: "RADIO",
   options: values.map((value) => ({ value })),
 });
-export function formItems(areas) {
+// areas: the buckets; domains: the policy domains, which get a grid of their own when there are any.
+export function formItems(areas, domains = []) {
   return [
     {
       title: WHOSE,
@@ -65,6 +67,15 @@ export function formItems(areas) {
         })),
       },
     },
+    // Policy domains, from the discipline plan. Optional: few people know every domain.
+    ...(domains.length ? [{
+      title: DOMAIN_GRID,
+      description: "How do you, or your colleague, know each policy domain? Leave out the ones you don't know.",
+      questionGroupItem: {
+        grid: { columns: radio(RATINGS) },
+        questions: domains.map((title) => ({ required: false, rowQuestion: { title } })),
+      },
+    }] : []),
     {
       title: "Anything to add?",
       questionItem: {
@@ -173,21 +184,30 @@ const row = (values) => `{${values.map(quote).join(",")}}`;
 // Raw rows never leave the formula. Counts below MIN_GROUP are blank. Output: area, then one column per level.
 // Each person's latest self-assessment counts, once. Only an area without a column yet counts as 0: any other
 // error shows, so an import that still needs "Allow access" displays its #REF! and button.
+// Every column whose header matches counts, duplicates included: Google adds a second column of the same name
+// when a question is recreated. Per person, the highest level across a row's columns counts.
 // aliases: area -> former bucket names that went into it (the bucket history). Their response columns count
 // with it, so answers from before a regrouping stay counted: per person, the highest level across the columns.
-export function supplyFormula(sheetId, tab, areas, aliases = {}) {
-  const names = areas.map((a) => [a, ...(aliases[a] ?? [])].join("|"));
+// domains: policy domains, counted from the domain grid as rows "Domain expertise: <domain>".
+export function supplyFormula(sheetId, tab, areas, aliases = {}, domains = []) {
+  const header = (grid, name) => `${grid} [${name}]`;
+  const labels = [...areas, ...domains.map((d) => `${DOMAIN_GRID}: ${d}`)];
+  // Per row, the response columns it counts, by header, "|"-separated: a bucket's own and its former buckets'.
+  const names = [
+    ...areas.map((a) => [a, ...(aliases[a] ?? [])].map((n) => header(GRID, n)).join("|")),
+    ...domains.map((d) => header(DOMAIN_GRID, d)),
+  ];
   return `=LET(
   d, IMPORTRANGE(${quote(sheetId)}, ${quote(`'${tab}'!A:ZZ`)}),
   h, CHOOSEROWS(d, 1),
   body, FILTER(d, SEQUENCE(ROWS(d)) > 1, CHOOSECOLS(d, XMATCH(${quote(WHOSE)}, h)) = ${quote(MYSELF)}),
   latest, SORTN(SORT(body, 1, FALSE), 9^9, 2, XMATCH("Email address", h), TRUE),
-  areas, ${column(areas)},
+  areas, ${column(labels)},
   names, ${column(names)},
   levels, ${row(SUPPLY_LEVELS)},
   counts, MAKEARRAY(ROWS(areas), COLUMNS(levels), LAMBDA(i, j, LET(
-    cols, MAP(SPLIT(INDEX(names, i, 1), "|", FALSE, FALSE), LAMBDA(a, IFNA(XMATCH(${quote(`${GRID} [`)} & a & "]", h), 0))),
-    n, IF(MAX(cols) = 0, 0, SUM(--(BYROW(CHOOSECOLS(latest, FILTER(cols, cols > 0)), LAMBDA(r, MAX(IFNA(XMATCH(r, levels), 0)))) = j))),
+    cols, IFNA(FILTER(SEQUENCE(1, COLUMNS(h)), ISNUMBER(XMATCH(h, SPLIT(INDEX(names, i, 1), "|", FALSE, FALSE)))), 0),
+    n, IF(MAX(cols) = 0, 0, SUM(--(BYROW(CHOOSECOLS(latest, cols), LAMBDA(r, MAX(IFNA(XMATCH(r, levels), 0)))) = j))),
     IF(n < ${MIN_GROUP}, "", n)))),
   VSTACK(HSTACK("area", levels), HSTACK(areas, counts))
 )`;

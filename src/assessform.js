@@ -5,7 +5,7 @@ import { load, SHEET_LABEL } from "./source.js";
 import { readTabs, withSheet } from "./google.js";
 import { topAreas } from "./buckets.js";
 import { DEFAULT_BUCKETS } from "./areas.js";
-import { RATINGS } from "./icform.js";
+import { RATINGS, DOMAIN_GRID as DOMAIN } from "./icform.js";
 import { readFormRows, prefillUrl, followBuckets } from "./prefill.js";
 import { restoreAssessment, saveAssessment } from "./selfassessment.js";
 
@@ -27,7 +27,7 @@ const buckets = session.data.buckets ?? [];
 const areas = topAreas(buckets, DEFAULT_BUCKETS);
 if (!buckets.length) {
   rateNote.hidden = false;
-  rateNote.textContent = "The discipline hasn't grouped its areas into buckets yet, so these are the default ten. Demand from the project survey may not match them until it has.";
+  rateNote.textContent = "The discipline hasn't grouped its areas into buckets yet, so these are the default ten.";
 }
 
 // The form's link and entry IDs, from the aggregate sheet, written by the portal's Set up IC form.
@@ -42,12 +42,15 @@ try {
 
 const state = restoreAssessment();
 // Answers for former buckets follow them to the bucket they went to; others no longer asked about are dropped.
-state.ratings = followBuckets(state.ratings, areas, session.data["bucket-history"] ?? []);
+// Policy domains, if the form has a domain grid: optional rows after the areas.
+const domains = [...form.areas.keys()].filter((n) => n.startsWith(`${DOMAIN}: `));
+const questions = [...areas, ...domains];
+state.ratings = followBuckets(state.ratings, questions, session.data["bucket-history"] ?? []);
 document.getElementById("own-view").hidden = !state.submitted;
 
 function renderTable() {
   const head = $("tr", {}, $("th", { scope: "col", textContent: "Area" }), ...RATINGS.map((r) => $("th", { scope: "col", textContent: r })));
-  const rows = areas.map((area, i) => {
+  const rows = questions.map((area, i) => {
     const cells = RATINGS.map((rating) => {
       const input = $("input", { type: "radio", name: `area-${i}`, value: rating, checked: state.ratings[area] === rating });
       input.setAttribute("aria-label", `${area}: ${rating}`);
@@ -58,7 +61,7 @@ function renderTable() {
       });
       return $("td", {}, $("label", {}, input));
     });
-    const tr = $("tr", {}, $("th", { scope: "row", textContent: area }), ...cells);
+    const tr = $("tr", {}, $("th", { scope: "row", textContent: domains.includes(area) ? `${area.slice(DOMAIN.length + 2)} (domain, optional)` : area }), ...cells);
     tr.dataset.area = area;
     return tr;
   });
@@ -83,7 +86,7 @@ submit.addEventListener("click", () => {
 });
 
 document.getElementById("forget").addEventListener("click", () => {
-  for (const a of areas) state.ratings[a] = "";
+  for (const a of questions) state.ratings[a] = "";
   state.submitted = false;
   saveAssessment(state);
   document.getElementById("own-view").hidden = true;

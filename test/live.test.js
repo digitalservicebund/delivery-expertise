@@ -53,3 +53,8 @@ test("ratings carrying their own team count even though nobody on the staffing l
 test("the quarter of a date", () => {
   assert.equal(quarterOf(new Date("2027-05-02")), "2027-Q2");
 });
+
+test("domain rows of the supply counts become domain expertise ratings", () => {
+  const rows = assessmentsFromSupply([{ area: "Domain expertise: Legislation", Conceptual: "1" }], "2027-Q1");
+  assert.deepEqual(rows.map((r) => [r.expertise, r.domain, r.level]), [["Domain expertise", "Legislation", 4]]);
+});
