@@ -2,7 +2,6 @@
 // BUCKET_COUNT buckets. The IC form asks about the buckets, and the aggregate supply counts per bucket.
 // The buckets tab in the discipline sheet is the source of truth; regrouping only proposes, and an admin applies.
 // Pure, so it runs in tests. Gemini proposes the grouping, through copy and paste in the portal (src/portal.js).
-import { DEFAULT_BUCKET_AREAS } from "./areas.js";
 
 
 export const BUCKET_COUNT = 10;
@@ -238,8 +237,8 @@ export function compareBuckets(current, proposed) {
 }
 
 // The buckets in force: the applied grouping, or until there is one, the default buckets and the areas they cover.
-// defaultBucketAreas: from the areas tab (readAreas), or the built-in list.
-export function effectiveBuckets(rows, defaultBucketAreas = DEFAULT_BUCKET_AREAS) {
+// defaultBucketAreas: from the areas tab (readAreas).
+export function effectiveBuckets(rows, defaultBucketAreas) {
   if (rows.some((r) => r.area && r.bucket)) return rows;
   return Object.entries(defaultBucketAreas).flatMap(([bucket, areas]) => areas.map((area) => ({ area, bucket })));
 }

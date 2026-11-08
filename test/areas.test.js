@@ -1,25 +1,23 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { AREA_HEADER, seedAreaRows, readAreas, areaIssues, AREAS, AREA_NAMES, DEFAULT_BUCKETS, DEFAULT_BUCKET_AREAS, COP } from "../src/areas.js";
+import { AREA_HEADER, readAreas, areaIssues, COP } from "../src/areas.js";
+import { AREA_ROWS } from "./fixtures/areas.js";
 
-test("the areas tab is seeded from the built-in list, one row per area", () => {
+test("the areas tab has the area, its default bucket, support and one example per working method", () => {
   assert.deepEqual(AREA_HEADER, ["area", "default_bucket", "support", "operative", "conceptual", "strategic", "comprehensive"]);
-  const rows = seedAreaRows();
-  assert.equal(rows.length, AREA_NAMES.length);
-  assert.deepEqual(rows.find((r) => r.area === "CI/CD"), {
-    area: "CI/CD", default_bucket: "DevOps, CI/CD & Infrastructure", support: "platform",
-    operative: AREAS.find(([n]) => n === "CI/CD")[2][0], conceptual: AREAS.find(([n]) => n === "CI/CD")[2][1],
-    strategic: AREAS.find(([n]) => n === "CI/CD")[2][2], comprehensive: AREAS.find(([n]) => n === "CI/CD")[2][3],
-  });
 });
 
-test("reading the seed gives back the built-in list, and an empty tab falls back to it", () => {
-  for (const catalogue of [readAreas(seedAreaRows()), readAreas([])]) {
-    assert.deepEqual([...catalogue.names].sort(), [...AREA_NAMES].sort());
-    assert.deepEqual(catalogue.defaultBuckets, DEFAULT_BUCKETS);
-    assert.deepEqual(catalogue.defaultBucketAreas, DEFAULT_BUCKET_AREAS);
-    assert.deepEqual([...catalogue.areas].sort(), [...AREAS].sort());
-  }
+test("the areas tab gives the areas, their names, the default buckets in order and the areas each covers", () => {
+  const { areas, names, defaultBuckets, defaultBucketAreas } = readAreas(AREA_ROWS);
+  assert.equal(names.length, AREA_ROWS.length);
+  assert.equal(defaultBuckets.length, 10);
+  assert.equal(defaultBuckets[0], "Discovery & Inception");
+  assert.deepEqual(defaultBucketAreas.Frontend, ["Frontend development", "Design systems"]);
+  assert.deepEqual(areas.find(([n]) => n === "CI/CD"), ["CI/CD", "the platform team", ["Do CI/CD", "Plan CI/CD", "Lead CI/CD", "Shape CI/CD"]]);
+});
+
+test("an empty tab gives nothing: the sheet is the only source", () => {
+  assert.deepEqual(readAreas([]), { areas: [], names: [], defaultBuckets: [], defaultBucketAreas: {} });
 });
 
 test("rows edited in the sheet are read as they are; unknown support counts as the community of practice", () => {
@@ -36,8 +34,9 @@ test("rows edited in the sheet are read as they are; unknown support counts as t
   assert.deepEqual(areas[0][2], ["Write Rust", "", "", ""]);
 });
 
-test("the set-up warns about an areas tab that doesn't give exactly ten default buckets or leaves areas without one", () => {
-  assert.deepEqual(areaIssues(seedAreaRows()), []);
+test("the set-up warns about an empty areas tab, or one without exactly ten default buckets or with areas lacking one", () => {
+  assert.deepEqual(areaIssues(AREA_ROWS), []);
+  assert.deepEqual(areaIssues([]), ["No areas yet: fill in the tab"]);
   const issues = areaIssues([{ area: "Rust", default_bucket: "Systems" }, { area: "Go", default_bucket: "" }]);
   assert.deepEqual(issues, ["1 default bucket: exactly 10, please", "No default bucket: Go"]);
 });

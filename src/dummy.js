@@ -3,7 +3,7 @@
 // people are R001, R002, … Runs in the browser (the portal) and in Node (scripts/generate-data.js).
 // Deterministic (seeded) so regenerating from the same snapshot produces identical data.
 import { assessedCoverage, PEOPLE, TECH_LEAD, BOOKABLE_DAYS_PER_QUARTER } from "./model.js";
-import { SUPPORT_KEY, readAreas } from "./areas.js";
+import { SUPPORT_KEY } from "./areas.js";
 
 const QUARTERS = ["2026-Q1", "2026-Q2", "2026-Q3", "2026-Q4"];
 const COMPLETED = QUARTERS.slice(0, -1); // activity is only recorded for finished quarters
@@ -110,9 +110,10 @@ const keyed = (key) => (key.startsWith("Domain:") ? { expertise: "Domain experti
 
 // rows: the snapshot's rows (Engagement Type, Level, Engagement, Team, Department, Status; other columns ignored).
 // Returns the dummy data's tabs: name -> rows.
-// catalogue: the area list (readAreas of the discipline sheet's areas tab); the built-in one by default. Areas it
+// catalogue: the area list (readAreas of the discipline sheet's areas tab). Areas it
 // has that the tables above don't know get a modest prevalence and no trend.
-export function generateDummyData(rows, catalogue = readAreas([])) {
+export function generateDummyData(rows, catalogue) {
+  if (!catalogue.names.length) throw new Error("The discipline sheet's areas tab is empty: fill it in first.");
   const known = new Set(catalogue.names);
   const prevalence = (area) => EXPERTISE[area]?.prevalence ?? 0.08;
   rng = seeded();
@@ -266,7 +267,8 @@ export function generateDummyData(rows, catalogue = readAreas([])) {
     const meanLevel = Math.round(team.people.reduce((s, p) => s + p.level, 0) / size);
     for (const [rank, expertise] of team.expertise.entries()) {
       // Mostly one way of working, sometimes with one person needed a step more senior.
-      const base = { level: clampLevel(meanLevel - (rank > 0 ? 1 : 0)), people: Math.max(rank < 1 ? 1 : 0, size / (rank + 2)) };
+      // A team's primary area, and any it typed in itself, need at least one person.
+      const base = { level: clampLevel(meanLevel - (rank > 0 ? 1 : 0)), people: Math.max(rank < 1 || team.added.has(expertise) ? 1 : 0, size / (rank + 2)) };
       const lines = [base];
       // Already at the top level there is no step more senior, so no second line.
       if (rng() < 0.25 && base.level < 6) lines.push({ level: base.level + 1, people: 1 });

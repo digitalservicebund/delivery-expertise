@@ -2,7 +2,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { compareBuckets, bucketPrompt, parseBuckets, readBuckets, bucketRows, areasToGroup, pending, topAreas, inBuckets, BUCKET_HEADER, HISTORY_HEADER, nextHistory, aliasesOf, renamedTo, inferHistory, effectiveBuckets, suggestBuckets, demandAreas, surveySections } from "../src/buckets.js";
 import { liveLayout } from "../src/sheets.js";
-import { AREA_NAMES, DEFAULT_BUCKETS, DEFAULT_BUCKET_AREAS, RETIRED_DEFAULT_AREAS, AREA_HEADER } from "../src/areas.js";
+import { AREA_HEADER } from "../src/areas.js";
+import { CATALOGUE } from "./fixtures/areas.js";
 
 test("the areas to group are the standard ones, every surveyed area and every grouped one, without domain expertise", () => {
   const demand = [{ expertise: "Frontend" }, { expertise: "Rust" }, { expertise: "Domain expertise", domain: "Tax" }, { expertise: " " }];
@@ -207,23 +208,13 @@ test("former buckets are found in the IC responses' columns and mapped retroacti
   assert.deepEqual(inferHistory(headers, [], [], defaults, "T2"), { rows: [], unresolved: [] });
 });
 
-test("every default bucket's areas are suggested areas", () => {
-  assert.deepEqual(Object.keys(DEFAULT_BUCKET_AREAS), DEFAULT_BUCKETS);
-  for (const areas of Object.values(DEFAULT_BUCKET_AREAS)) for (const a of areas) assert.ok(AREA_NAMES.includes(a), a);
-});
-
-test("every suggested area is in exactly one default bucket", () => {
-  const all = Object.values(DEFAULT_BUCKET_AREAS).flat();
-  assert.deepEqual([...all].sort(), [...AREA_NAMES].sort());
-  for (const areas of Object.values(RETIRED_DEFAULT_AREAS)) for (const a of areas) assert.ok(AREA_NAMES.includes(a), a);
-});
 
 test("until a grouping is applied, the default buckets and their areas are the buckets", () => {
-  const rows = effectiveBuckets([]);
-  assert.deepEqual([...new Set(rows.map((r) => r.bucket))], DEFAULT_BUCKETS);
-  assert.ok(rows.some((r) => r.area === "On-call & incident response" && r.bucket === "Software lifecycle"));
+  const rows = effectiveBuckets([], CATALOGUE.defaultBucketAreas);
+  assert.deepEqual([...new Set(rows.map((r) => r.bucket))], CATALOGUE.defaultBuckets);
+  assert.ok(rows.some((r) => r.area === "Operations" && r.bucket === "Software lifecycle"));
   const applied = [{ area: "React", bucket: "Web" }];
-  assert.equal(effectiveBuckets(applied), applied);
+  assert.equal(effectiveBuckets(applied, CATALOGUE.defaultBucketAreas), applied);
 });
 
 test("rows already naming a current bucket keep it, even when an area of that name sits elsewhere", () => {
@@ -233,7 +224,7 @@ test("rows already naming a current bucket keep it, even when an area of that na
 });
 
 test("a write-in is matched to buckets by name: an exact area first, else buckets sharing words with it", () => {
-  const rows = effectiveBuckets([]);
+  const rows = effectiveBuckets([], CATALOGUE.defaultBucketAreas);
   assert.deepEqual(suggestBuckets("search", rows), ["Data & AI"]);
   assert.deepEqual(suggestBuckets("React frontend", rows).slice(0, 1), ["Frontend"]);
   assert.equal(suggestBuckets("Kubernetes operations", rows)[0], "Software lifecycle");

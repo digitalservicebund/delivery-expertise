@@ -5,7 +5,7 @@ import { bar, currentMode, loadConfig, DATA_TABS, SHEET_LABEL } from "./source.j
 import { token, hasToken, canEdit, readTabs, readHeader, replaceTabs, setUpTabs, withSheet, tabTitles, getForm, updateForm } from "./google.js";
 import { liveLayout } from "./sheets.js";
 import { FORM_INFO, formItems, formRequests, branchRequest, supplyFormula } from "./icform.js";
-import { RETIRED_DEFAULT_AREAS, readAreas, seedAreaRows, areaIssues } from "./areas.js";
+import { readAreas, areaIssues } from "./areas.js";
 import { formRows } from "./prefill.js";
 import { compareBuckets, bucketPrompt, parseBuckets, readBuckets, bucketRows, areasToGroup, pending, topAreas, nextHistory, aliasesOf, inferHistory, effectiveBuckets } from "./buckets.js";
 
@@ -43,7 +43,7 @@ async function loadDummyData(config, t) {
   status.replaceChildren("Generating the dummy data…");
   const data = generateDummyData(rows.staffing, readAreas(rows.areas));
   // The prototype pages read the area list from the prototype sheet, like everything else in prototype mode.
-  data.areas = rows.areas.length ? rows.areas : seedAreaRows();
+  data.areas = rows.areas;
   status.replaceChildren("Writing to the prototype sheet…");
   await withSheet(config, t, config.sheets.prototype, SHEET_LABEL.prototype, () => replaceTabs(t, config.sheets.prototype, data));
   const total = Object.values(data).reduce((n, rows) => n + rows.length, 0);
@@ -89,7 +89,7 @@ async function readBucketTabs(config, t, sheet = "discipline") {
 async function recoverHistory(config, t, tab, buckets, history, catalogue, lines) {
   status.replaceChildren("Looking for former buckets in the IC responses…");
   const headers = await readHeader(t, config.sheets.icResponses, tab);
-  const { rows, unresolved } = inferHistory(headers, effectiveBuckets(buckets, catalogue.defaultBucketAreas), history, { ...catalogue.defaultBucketAreas, ...RETIRED_DEFAULT_AREAS }, new Date().toISOString());
+  const { rows, unresolved } = inferHistory(headers, effectiveBuckets(buckets, catalogue.defaultBucketAreas), history, catalogue.defaultBucketAreas, new Date().toISOString());
   if (rows.length) {
     const id = config.sheets.discipline;
     await withSheet(config, t, id, SHEET_LABEL.discipline, () => replaceTabs(t, id, { "bucket-history": [...history, ...rows] }));
@@ -125,12 +125,7 @@ async function setUpLiveSheets(config, t) {
     const notes = await withSheet(config, t, id, SHEET_LABEL[sheet], () => setUpTabs(t, id, layout[sheet]));
     lines.push(...notes.map((n) => `${SHEET_LABEL[sheet]}, ${n}`));
   }
-  // The area list starts as the built-in one; after that the sheet is the source.
-  if (!areaRows.length) {
-    const id = config.sheets.discipline;
-    await withSheet(config, t, id, SHEET_LABEL.discipline, () => replaceTabs(t, id, { areas: seedAreaRows() }));
-    lines.push(`discipline sheet, areas: filled with the built-in list of ${seedAreaRows().length} areas. Edit it there from now on.`);
-  }
+  // The area list is edited in the discipline sheet; the set-up only checks it.
   lines.push(...areaIssues(areaRows).map((issue) => `discipline sheet, areas: ${issue}`));
   // Google lets nobody approve an import through the API: it takes one click in each importing sheet.
   const link = (sheet) => Object.assign(document.createElement("a"), {
