@@ -34,6 +34,12 @@ jobs:
           printf '%s' "$TEAMS_CSV" | base64 -d > teams.csv
           npm run data
           rm teams.csv
+      # OAuth client ID, sheet IDs and the IC form URL, as JSON in the SHEETS_CONFIG
+      # secret (master copy in 1Password). Never the OAuth client secret.
+      - name: Write config
+        env:
+          SHEETS_CONFIG: ${{ secrets.SHEETS_CONFIG }}
+        run: node scripts/write-config.js
       # The site lives under an unguessable folder taken from a secret, so the
       # URL is not discoverable from the repo. The site root stays empty (404).
       - name: Assemble site

@@ -2,3 +2,4 @@ node_modules
 dist
 teams*.csv
 data/
+public/config.js
