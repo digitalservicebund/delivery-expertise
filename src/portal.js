@@ -2,10 +2,10 @@
 // dummy data, set up the live sheets' tabs and imports, and set up the IC form.
 import { generateDummyData } from "./dummy.js";
 import { bar, currentMode, loadConfig, DATA_TABS, SHEET_LABEL } from "./source.js";
-import { token, hasToken, canEdit, readTabs, readHeader, replaceTabs, setUpTabs, withSheet, tabTitles, getForm, updateForm } from "./google.js";
+import { token, hasToken, canEdit, readTabs, readHeader, replaceTabs, appendRows, setUpTabs, withSheet, tabTitles, getForm, updateForm } from "./google.js";
 import { liveLayout } from "./sheets.js";
 import { FORM_INFO, formItems, formRequests, branchRequest, supplyFormula } from "./icform.js";
-import { readAreas, areaIssues } from "./areas.js";
+import { readAreas, areaIssues, areasMissingFrom, AREA_HEADER } from "./areas.js";
 import { formRows } from "./prefill.js";
 import { compareBuckets, bucketPrompt, parseBuckets, readBuckets, bucketRows, areasToGroup, pending, topAreas, nextHistory, aliasesOf, inferHistory, effectiveBuckets } from "./buckets.js";
 
@@ -61,7 +61,16 @@ async function responsesTab(config, t) {
   return tab;
 }
 
-// The area list from the discipline sheet's areas tab (rows, and as readAreas gives it), the built-in one while empty.
+// Adds the areas the buckets name but the areas tab lacks to the discipline sheet's areas tab. Returns the added rows.
+async function addMissingAreas(config, t, areaRows, buckets) {
+  const missing = areasMissingFrom(areaRows, buckets);
+  if (!missing.length) return [];
+  const id = config.sheets.discipline;
+  await withSheet(config, t, id, SHEET_LABEL.discipline, () => appendRows(t, id, "areas", AREA_HEADER, missing));
+  return missing;
+}
+
+// The area list from the discipline sheet's areas tab: its rows, and as readAreas gives it.
 async function readCatalogue(config, t) {
   const id = config.sheets.discipline;
   const { rows } = await withSheet(config, t, id, SHEET_LABEL.discipline, () => readTabs(t, id, ["areas"]));
@@ -125,8 +134,10 @@ async function setUpLiveSheets(config, t) {
     const notes = await withSheet(config, t, id, SHEET_LABEL[sheet], () => setUpTabs(t, id, layout[sheet]));
     lines.push(...notes.map((n) => `${SHEET_LABEL[sheet]}, ${n}`));
   }
-  // The area list is edited in the discipline sheet; the set-up only checks it.
-  lines.push(...areaIssues(areaRows).map((issue) => `discipline sheet, areas: ${issue}`));
+  // The area list is edited in the discipline sheet. Areas the buckets name that it lacks are added, so it matches.
+  const added = await addMissingAreas(config, t, areaRows, buckets);
+  if (added.length) lines.push(`discipline sheet, areas: added from the buckets: ${added.map((r) => r.area).join(", ")}. Fill in their examples there.`);
+  lines.push(...areaIssues([...areaRows, ...added]).map((issue) => `discipline sheet, areas: ${issue}`));
   // Google lets nobody approve an import through the API: it takes one click in each importing sheet.
   const link = (sheet) => Object.assign(document.createElement("a"), {
     href: `https://docs.google.com/spreadsheets/d/${config.sheets[sheet]}/edit`, target: "_blank", rel: "noopener", textContent: SHEET_LABEL[sheet],
@@ -270,13 +281,16 @@ async function applyBuckets(config, t) {
   const { result, history } = bucketState;
   const tabs = { buckets: bucketRows(result.buckets, at), "bucket-history": nextHistory(history, result, at) };
   await withSheet(config, t, id, SHEET_LABEL[sheet], () => replaceTabs(t, id, tabs));
+  // Live, areas the new buckets name but the area list lacks join the list, so it keeps matching the buckets.
+  const added = sheet === "discipline" ? await addMissingAreas(config, t, (await readCatalogue(config, t)).rows, tabs.buckets) : [];
   applyButton.hidden = true;
   answerBox.value = "";
   document.getElementById("buckets-proposed").replaceChildren();
   await showBuckets(config, t);
   bucketStatus.replaceChildren(sheet === "prototype"
     ? "Saved to the prototype sheet. The discipline view in prototype mode now counts demand, ratings and activity per bucket. The live buckets are unchanged."
-    : "Saved. Run Set up IC form and then Set up live sheets, so the form and the supply counts use the new buckets. Renamed or new buckets get new response columns; answers under a former bucket count towards the bucket it went to (the bucket-history tab).");
+    : "Saved. Run Set up IC form and then Set up live sheets, so the form and the supply counts use the new buckets. Renamed or new buckets get new response columns; answers under a former bucket count towards the bucket it went to (the bucket-history tab)."
+      + (added.length ? ` Added to the area list: ${added.map((r) => r.area).join(", ")}. Fill in their examples there.` : ""));
 }
 
 action(previewButton, "Could not preview the regrouping.", previewBuckets, bucketStatus);

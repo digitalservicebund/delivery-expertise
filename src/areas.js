@@ -32,3 +32,21 @@ export function areaIssues(rows) {
   if (without.length) issues.push(`No default bucket: ${without.join(", ")}`);
   return issues;
 }
+
+// Areas named in the buckets tab that the areas tab lacks, as new areas-tab rows: so the list matches the
+// buckets. Each takes the default bucket most of its bucket-mates on the list have, so the ten default buckets stay
+// ten; with none on the list it is left blank to fill in. Community-of-practice support, no examples yet.
+export function areasMissingFrom(areaRows, bucketRows) {
+  const defaultOf = new Map(areaRows.filter((r) => r.area?.trim()).map((r) => [r.area, r.default_bucket ?? ""]));
+  const missing = new Map();
+  for (const { area, bucket } of bucketRows) if (area && !defaultOf.has(area) && !missing.has(area)) missing.set(area, bucket);
+  const mateDefault = (bucket) => {
+    const counts = new Map();
+    for (const r of bucketRows) {
+      const d = r.bucket === bucket ? defaultOf.get(r.area) : "";
+      if (d) counts.set(d, (counts.get(d) ?? 0) + 1);
+    }
+    return [...counts].reduce((best, e) => (!best || e[1] > best[1] ? e : best), null)?.[0] ?? "";
+  };
+  return [...missing].map(([area, bucket]) => ({ area, default_bucket: mateDefault(bucket), support: "cop", operative: "", conceptual: "", strategic: "", comprehensive: "" }));
+}

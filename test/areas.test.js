@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { AREA_HEADER, readAreas, areaIssues, COP } from "../src/areas.js";
+import { AREA_HEADER, readAreas, areaIssues, areasMissingFrom, COP } from "../src/areas.js";
 import { AREA_ROWS } from "./fixtures/areas.js";
 
 test("the areas tab has the area, its default bucket, support and one example per working method", () => {
@@ -39,4 +39,14 @@ test("the set-up warns about an empty areas tab, or one without exactly ten defa
   assert.deepEqual(areaIssues([]), ["No areas yet: fill in the tab"]);
   const issues = areaIssues([{ area: "Rust", default_bucket: "Systems" }, { area: "Go", default_bucket: "" }]);
   assert.deepEqual(issues, ["1 default bucket: exactly 10, please", "No default bucket: Go"]);
+});
+
+test("areas in the buckets but not in the areas tab are added to it, with the default bucket of their bucket-mates", () => {
+  const buckets = [{ area: "Search", bucket: "Data" }, { area: "Elasticsearch", bucket: "Data" }, { area: "Kubernetes", bucket: "Platform" }, { area: "Kubernetes", bucket: "Platform" }];
+  assert.deepEqual(areasMissingFrom(AREA_ROWS, buckets), [
+    { area: "Elasticsearch", default_bucket: "Data & AI", support: "cop", operative: "", conceptual: "", strategic: "", comprehensive: "" },
+    // No bucket-mate on the list: left for the discipline head to fill in.
+    { area: "Kubernetes", default_bucket: "", support: "cop", operative: "", conceptual: "", strategic: "", comprehensive: "" },
+  ]);
+  assert.deepEqual(areasMissingFrom(AREA_ROWS, []), []);
 });
