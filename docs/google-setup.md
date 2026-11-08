@@ -16,7 +16,10 @@ The prototypes store everything in Google Sheets and a Google Form. There is no 
 Every page reads through one loader, `src/source.js`, and shows a bar at the top saying which data it shows, with a switch and a Google sign-in button when needed.
 
 - **Prototype** (the default) reads the prototype sheet. It has one tab per generated CSV, named like the file without `.csv`: `staffing`, `discipline-plan`, `project-demand`, `historical-activity`, `expertise-assessments`. Fill or refresh it with **Load dummy data** on the portal, which writes `data/*.csv` into it with your own access. Survey pages write nothing.
-- **Live** reads `demand` and `plan` from the aggregate sheet. Nothing live holds staffing, booked time or per-person ratings yet, so the discipline view says so instead of drawing, and the survey has no team list. This is the gap to close next.
+- **Live** reads `demand`, `plan` and `supply` from the aggregate sheet. The survey adds the projects sheet's `teams` list. The discipline view adds the discipline sheet's `staffing` snapshot, which only discipline heads can open (`src/live.js` turns both into the dummy data's shapes):
+  - **Staffing:** active engineers only, each once, in the team with their largest assignment, with names and emails dropped. One quarter only, with no people leads.
+  - **Supply:** the anonymous counts become ratings that belong to no team. They count for the whole discipline, but a project or team filter leaves them out, so filtered views rest on what the leads reported.
+  - **Not available:** booked time, so there are no suggestions from it. The individual view, because nobody's own ratings are known.
 - **Local files**: without a `config.js`, as in a fresh clone, pages read `data/*.csv` directly and need no sign-in.
 
 `?mode=live` or `?mode=prototype` switches, and the choice holds for the browser tab's session. The access token is also kept for the tab's session only, so moving between pages doesn't ask again. It expires within the hour.
@@ -33,7 +36,7 @@ gh secret set SHEETS_CONFIG < sheets-config.json   # the JSON from 1Password
 
 In Google Cloud: an OAuth client of type **Web application**, consent screen **Internal**. Authorised JavaScript origins: the GitHub Pages origin and `http://localhost:8000`. No redirect URIs. Enable the **Google Sheets API**, **Google Drive API** and **Google Picker API** in the same project.
 
-The only scope is `https://www.googleapis.com/auth/drive.file`: the app can reach only files a person has handed to it. The first time a page needs a sheet, Google answers 404, and the page opens Google Picker showing just that sheet. One **Select** hands it over for good, on every device, until the person removes the app's access in their Google account. Nobody grants access to all their spreadsheets.
+Two scopes: `userinfo.email`, so the survey knows who is answering, and `drive.file`, so the app can reach only files a person has handed to it. The first time a page needs a sheet, Google answers 404, and the page opens Google Picker showing just that sheet. One **Select** hands it over for good, on every device, until the person removes the app's access in their Google account. Nobody grants access to all their spreadsheets.
 
 The Picker needs an API key (`pickerKey` in the config). It identifies the project and grants no access. Restrict it to **Websites** `http://localhost:8000/*` and `https://digitalservicebund.github.io/delivery-expertise/*`, and to the **Google Picker API** only. The Picker's app ID is the project number, taken from the start of the client ID.
 
@@ -51,7 +54,25 @@ quarter | team | expertise | domain | method | people | coverage | support | spe
 
 Everyone with access can read and change every team's rows. That is accepted. Version history shows who changed what.
 
+A second tab, `teams`, says who answers for which team: `project | team | email | role`. Nobody edits it. It is one import formula, written by **Set up live sheets**, that pulls from the discipline sheet's `staffing` tab (below) every active person who has a role in a team. Only these four columns leave the discipline sheet. Names, levels and FTE stay behind. A person with several roles in a team has them in one field, separated by `;`. Its emails go nowhere else: not to the aggregate sheet, and not to the prototype sheet.
+
+In live mode the survey finds out who is signed in and shows only the teams they have a role in. If that is one team, it is filled in for them. If it is none, they can't submit and are told to ask the discipline head. This is a convenience, not a lock: anyone with edit access to the sheet can still write any row by hand. Prototype mode has no teams list and offers every team in the dummy data.
+
+On submit, the survey appends its rows to `demand`, with the person's email in `submitted_by` and the time in `submitted_at`. Pages read only each team's latest submission per quarter. The `teams` tab never reaches the aggregate sheet, because it holds emails.
+
 ## Discipline sheet
+
+### `staffing`: the ds-staffing snapshot
+
+**Set up live sheets** creates a `staffing` tab with the header row of the ds-staffing snapshot export (`Email;First Name;…;Roles in Team;% Assignment in Team;Status`). To refresh it:
+
+1. In ds-staffing, export the staffing snapshot as CSV. Active status is enough.
+2. In the discipline sheet, select the `staffing` tab, then **File → Import → Upload** the CSV.
+3. Choose **Replace current sheet** and separator **Semicolon**, and untick converting text to numbers, dates and formulas.
+
+The export's own header replaces the tab's header, and the projects sheet's teams list updates on its own within minutes. The tab holds names, emails and levels, so the discipline sheet stays shared with discipline heads only.
+
+### `plan`
 
 One tab, `plan`, in the shape of `data/discipline-plan.csv` plus who submitted it:
 

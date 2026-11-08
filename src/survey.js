@@ -2,7 +2,10 @@
 // (sized by a best guess from its history, searchable, open to new areas). Only the picked areas get a grid.
 // On submit it shows the rows the answers would add to the Project Demand tab. Nothing is sent anywhere.
 import { toCsv } from "./csv.js";
-import { load, DATA_TABS } from "./source.js";
+import { load, currentMode, DATA_TABS, SHEET_LABEL } from "./source.js";
+import { whoAmI, appendRows, withSheet } from "./google.js";
+import { DEMAND_HEADER } from "./sheets.js";
+import { teamsOf, projectsByTeam } from "./teams.js";
 import { relevance, matches } from "./cloud.js";
 import { AREAS, COP, SUPPORT_KEY } from "./areas.js";
 import { METHODS as METHOD_LEVEL, PEOPLE as PEOPLE_COUNT, LEVELS, supplyAsOf, assessedCoverage, WORKING_DAYS_PER_QUARTER, UTILISATION, BOOKABLE_DAYS_PER_QUARTER } from "./model.js";
@@ -191,7 +194,11 @@ function rowsFor(form, team) {
 }
 
 // Missing datasets come back empty: the survey still works, just without suggestions or a team list.
-const { data: sets } = await load(DATA_TABS);
+// Live reads the teams tab instead of staffing: staffing sits in the discipline sheet, which project leads
+// can't open. The teams tab says who may answer for which team.
+const LIVE_TABS = [...DATA_TABS.filter((n) => n !== "staffing"), "teams"];
+const session = await load((await currentMode()) === "live" ? LIVE_TABS : DATA_TABS);
+const sets = session.data;
 const [staffing, plan, demand, activity, assessments] = ["staffing", "discipline-plan", "project-demand", "historical-activity", "expertise-assessments"].map((n) => sets[n] ?? []);
 // Prototype: the latest answered quarter stands in for "last time", the latest recorded quarter for "the last three months".
 const lastAnswered = demand.map((r) => r.quarter).sort().at(-1);
@@ -220,16 +227,35 @@ function hintFor(team, key) {
   return hint;
 }
 const latest = staffing.map((r) => r.quarter).sort().at(-1);
-const teams = [...new Set(staffing.filter((r) => r.quarter === latest).map((r) => r.team))].sort();
+// Live: only the teams the signed-in person is listed for, with their roles. Otherwise every staffed team.
+// The teams list holds emails, so it exists only in the projects sheet, for live mode.
+const live = session.mode === "live";
+// Why the email couldn't be read, if it couldn't: shown to the person instead of a guess.
+let whoError = "";
+const me = live ? await whoAmI(session.token).catch((err) => ((whoError = err.message), "")) : "";
+const myTeams = teamsOf(sets.teams ?? [], me);
+const teams = live ? myTeams.map((t) => t.team) : [...new Set(staffing.filter((r) => r.quarter === latest).map((r) => r.team))].sort();
 // Ratings as known now, placed in the team each person is staffed on. Only counts reach the page, never names.
 const teamNow = new Map(staffing.filter((r) => r.quarter === latest).map((r) => [r.person, r.team]));
 const ratings = supplyAsOf(assessments.map((r) => ({ ...r, expertise: r.domain ? `${r.expertise}: ${r.domain}` : r.expertise })), "9999", (p) => teamNow.get(p));
 for (const s of ratings.levels) s.key = s.expertise.startsWith("Domain expertise") ? "domain" : slug(s.expertise);
 const domainOf = new Map(plan.filter((r) => r.kind === "domain").map((r) => [r.subject, r.value]));
-const projectOf = new Map(staffing.map((r) => [r.team, r.project]));
+const projectOf = new Map([...staffing.map((r) => [r.team, r.project]), ...projectsByTeam(sets.teams ?? [])]);
 
 const select = document.getElementById("team");
-for (const team of teams) select.append($("option", { value: team }, team));
+for (const team of teams) {
+  const roles = myTeams.find((t) => t.team === team)?.roles ?? [];
+  select.append($("option", { value: team }, roles.length ? `${team} (${roles.join(", ")})` : team));
+}
+// Live: someone on one team gets it filled in. Someone on none is told why they can't answer.
+if (myTeams.length === 1 && teams.includes(myTeams[0].team)) select.value = myTeams[0].team;
+if (live && !teams.length) {
+  document.getElementById("team-note").textContent = me
+    ? `${me} isn't listed for any team. Ask the discipline head to add you to the teams list.`
+    : `Couldn't tell who is signed in, so no teams can be shown. Google said: ${whoError}`;
+  // The form's const is declared further down, so reach the button directly.
+  document.querySelector("#survey button[type=submit]").disabled = true;
+}
 
 const areas = document.getElementById("areas");
 const form = document.getElementById("survey");
@@ -358,9 +384,35 @@ search.addEventListener("keydown", (ev) => {
 addButton.addEventListener("click", addCustom);
 reset();
 
-form.addEventListener("submit", (ev) => {
+const resultNote = document.querySelector("#result p");
+const submitButton = form.querySelector("button[type=submit]");
+
+// Live: appends the answers to the projects sheet's demand tab, stamped with who and when.
+// Re-submitting appends again; only the latest submission per team and quarter counts when read.
+async function save(rows) {
+  if (!myTeams.some((t) => t.team === select.value)) throw new Error("You aren't listed for this team.");
+  const at = new Date().toISOString();
+  const stamped = rows.map((r) => ({ ...r, submitted_by: me, submitted_at: at }));
+  const { config, token } = session;
+  await withSheet(config, token, config.sheets.projects, SHEET_LABEL.projects,
+    () => appendRows(token, config.sheets.projects, "demand", DEMAND_HEADER, stamped));
+}
+
+form.addEventListener("submit", async (ev) => {
   ev.preventDefault();
   const rows = rowsFor(form, select.value);
   document.getElementById("rows").textContent = rows.length ? toCsv(rows) : "No areas answered.";
   document.getElementById("result").hidden = false;
+  if (session.mode !== "live") return;
+  if (!rows.length) return (resultNote.textContent = "Nothing to save: no areas answered.");
+  submitButton.disabled = true;
+  resultNote.textContent = "Saving…";
+  try {
+    await save(rows);
+    resultNote.textContent = `Saved ${rows.length} rows for ${select.value}. Submitting again replaces them.`;
+  } catch (err) {
+    resultNote.textContent = `Not saved. ${err.message}`;
+  } finally {
+    submitButton.disabled = false;
+  }
 });

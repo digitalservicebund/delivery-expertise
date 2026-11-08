@@ -1,5 +1,6 @@
 // Converting between Sheets API values (arrays of rows, the first being the header) and the row objects
 // the pages work with, the same shape parseCsv gives. Pure, so it runs in tests.
+import { STAFFING_HEADER, teamsFormula } from "./teams.js";
 
 export function rowsFromValues(values = []) {
   const [header = [], ...body] = values;
@@ -12,6 +13,15 @@ export function rowsFromValues(values = []) {
 export function valuesFromRows(rows) {
   const header = Object.keys(rows[0] ?? {});
   return [header, ...rows.map((r) => header.map((h) => r[h] ?? ""))];
+}
+
+// The survey only ever appends, so a team that submits again has two sets of rows for the quarter.
+// Keeps only the set with the latest submitted_at for each team and quarter. ISO timestamps sort as text.
+export function latestSubmissions(rows) {
+  const key = (r) => `${r.team}\u0000${r.quarter}`;
+  const latest = new Map();
+  for (const r of rows) if ((r.submitted_at ?? "") > (latest.get(key(r)) ?? "")) latest.set(key(r), r.submitted_at);
+  return rows.filter((r) => (r.submitted_at ?? "") === (latest.get(key(r)) ?? ""));
 }
 
 // The live sheets' tabs. Survey sheets get header rows. The aggregate sheet gets one import formula per tab.
@@ -27,8 +37,10 @@ export function liveLayout(sheets) {
     return `=QUERY(IMPORTRANGE("${id}", "${tab}!A:${lastColumn(header)}"), "select ${cols} where Col1 is not null", 1)`;
   };
   return {
-    projects: { demand: { header: DEMAND_HEADER } },
-    discipline: { plan: { header: PLAN_HEADER } },
+    // teams is read only by the survey, from this sheet. Its emails never go to the aggregate sheet.
+    projects: { demand: { header: DEMAND_HEADER }, teams: { formula: teamsFormula(sheets.discipline) } },
+    // Pasted by hand from the ds-staffing snapshot export. Holds names and levels: discipline heads only.
+    discipline: { plan: { header: PLAN_HEADER }, staffing: { header: STAFFING_HEADER } },
     aggregate: {
       demand: { formula: importOf(sheets.projects, "demand", DEMAND_HEADER) },
       plan: { formula: importOf(sheets.discipline, "plan", PLAN_HEADER) },

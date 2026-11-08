@@ -5,11 +5,22 @@
 // ?mode=live or ?mode=prototype switches, and the choice is kept for the browser tab's session.
 import { parseCsv } from "./csv.js";
 import { token, hasToken, readTabs, withSheet } from "./google.js";
+import { latestSubmissions } from "./sheets.js";
+import { staffingFromSnapshot, assessmentsFromSupply, quarterOf } from "./live.js";
 
 // The dummy data's tabs, named like the generated CSVs.
 export const DATA_TABS = ["staffing", "discipline-plan", "project-demand", "historical-activity", "expertise-assessments"];
 // Where each dataset lives in live mode: [sheet in config.sheets, tab]. Anything not listed has no live source yet.
-const LIVE = { "project-demand": ["aggregate", "demand"], "discipline-plan": ["aggregate", "plan"] };
+// teams comes from the projects sheet itself: it holds emails, which the aggregate sheet must not.
+// staffing is the ds-staffing snapshot in the discipline sheet, which only discipline heads can open.
+// expertise-assessments are the aggregate sheet's anonymous supply counts.
+const LIVE = {
+  "project-demand": ["aggregate", "demand"],
+  "discipline-plan": ["aggregate", "plan"],
+  "expertise-assessments": ["aggregate", "supply"],
+  staffing: ["discipline", "staffing"],
+  teams: ["projects", "teams"],
+};
 const MODE_KEY = "data-mode";
 const LABEL = { prototype: "Prototype data", live: "Live data", files: "Local dummy files" };
 
@@ -95,28 +106,42 @@ async function fromLive(t, config, names) {
       if (absent.includes(LIVE[n][1])) missing.push(n);
     }
   }
-  return { data, missing };
+  return { data: fromLiveShapes(data), missing };
 }
 
-// names: datasets, as in DATA_TABS. Returns { data: name -> rows, missing: names with no source in this mode, mode }.
+// Live tabs in the shapes the pages know from the dummy data. Staffing and ratings are stamped with the
+// latest quarter anyone answered for, so the model sees them as current.
+function fromLiveShapes(data) {
+  const out = { ...data };
+  if (data["project-demand"]) out["project-demand"] = latestSubmissions(data["project-demand"]);
+  const quarter = (out["project-demand"] ?? []).map((r) => r.quarter).sort().at(-1) ?? quarterOf(new Date());
+  if (data.staffing) out.staffing = staffingFromSnapshot(data.staffing, quarter);
+  if (data["expertise-assessments"]) out["expertise-assessments"] = assessmentsFromSupply(data["expertise-assessments"], quarter);
+  return out;
+}
+
+// names: datasets, as in DATA_TABS; live mode also knows "teams". Returns { data: name -> rows, missing: names
+// with no source in this mode, mode, config, token, status }: pages that write reuse the config and token,
+// and can report in the bar's status.
 export async function load(names) {
   const config = await loadConfig();
   const mode = config ? chosenMode() : "files";
   const ui = bar(mode);
-  if (mode === "files") return { data: await fromFiles(names), missing: [], mode };
+  if (mode === "files") return { data: await fromFiles(names), missing: [], mode, status: ui.status };
   const t = await signIn(config.clientId, ui);
   ui.status.textContent = "Loading…";
+  const session = { mode, config, token: t, status: ui.status };
   try {
     if (mode === "live") {
       const { data, missing } = await fromLive(t, config, names);
       ui.status.textContent = missing.length ? `Not available live yet: ${missing.join(", ")}.` : "";
-      return { data, missing, mode };
+      return { data, missing, ...session };
     }
     const { rows: data, absent } = await readSheet(config, t, "prototype", names);
     // The prototype sheet should have every tab: if not, it hasn't been filled yet.
     if (absent.length) throw new Error(`The prototype sheet has no ${absent.join(", ")} tab${absent.length > 1 ? "s" : ""}.`);
     ui.status.textContent = "";
-    return { data, missing: [], mode };
+    return { data, missing: [], ...session };
   } catch (err) {
     ui.status.textContent = mode === "prototype" ? `${err.message} Load the dummy data from the portal first.` : err.message;
     throw err;

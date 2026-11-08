@@ -1,10 +1,29 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { rowsFromValues, valuesFromRows, tabRange, liveLayout, DEMAND_HEADER } from "../src/sheets.js";
+import { rowsFromValues, valuesFromRows, tabRange, liveLayout, DEMAND_HEADER, latestSubmissions } from "../src/sheets.js";
+
+test("only each team's latest submission per quarter counts", () => {
+  const row = (team, quarter, at, method) => ({ team, quarter, submitted_at: at, method });
+  const rows = [
+    row("A", "2027-Q1", "2027-01-05T10:00:00Z", "operative"),
+    row("A", "2027-Q1", "2027-01-05T10:00:00Z", "conceptual"),
+    row("A", "2027-Q1", "2027-01-09T08:00:00Z", "strategic"),
+    row("A", "2026-Q4", "2026-10-01T08:00:00Z", "operative"),
+    row("B", "2027-Q1", "", "operative"),
+  ];
+  assert.deepEqual(latestSubmissions(rows).map((r) => `${r.team} ${r.quarter} ${r.method}`),
+    ["A 2027-Q1 strategic", "A 2026-Q4 operative", "B 2027-Q1 operative"]);
+});
 
 test("the aggregate sheet imports the survey sheets without emails or comments", () => {
   const layout = liveLayout({ projects: "P", discipline: "D" });
   assert.deepEqual(layout.projects.demand.header, DEMAND_HEADER);
+  // The teams list comes from the staffing snapshot in the discipline sheet. Its emails go nowhere else:
+  // not to the aggregate sheet, and not to the prototype sheet.
+  assert.ok(layout.projects.teams.formula.includes('IMPORTRANGE("D", "staffing!'));
+  assert.ok(!("prototype" in layout));
+  assert.equal(layout.discipline.staffing.header[0], "Email");
+  assert.ok(!("teams" in layout.aggregate));
   assert.equal(layout.aggregate.demand.formula,
     '=QUERY(IMPORTRANGE("P", "demand!A:L"), "select Col1, Col2, Col3, Col4, Col5, Col6, Col7, Col8, Col9, Col12 where Col1 is not null", 1)');
   assert.equal(layout.aggregate.plan.formula,

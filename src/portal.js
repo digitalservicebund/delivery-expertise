@@ -67,19 +67,21 @@ async function setUpLiveSheets(config, t) {
   } catch (err) {
     lines.push(`aggregate sheet, supply: skipped. ${err.message}`);
   }
-  for (const sheet of ["projects", "discipline", "aggregate"]) {
+  // Sources first, so every import points at a tab that exists.
+  for (const sheet of ["discipline", "projects", "aggregate"]) {
     status.replaceChildren(`Setting up the ${SHEET_LABEL[sheet]}…`);
     const id = config.sheets[sheet];
     const notes = await withSheet(config, t, id, SHEET_LABEL[sheet], () => setUpTabs(t, id, layout[sheet]));
     lines.push(...notes.map((n) => `${SHEET_LABEL[sheet]}, ${n}`));
   }
-  // Google lets nobody approve an import through the API: it takes one click in the sheet itself.
-  const open = Object.assign(document.createElement("a"), {
-    href: `https://docs.google.com/spreadsheets/d/${config.sheets.aggregate}/edit`, target: "_blank", rel: "noopener", textContent: "Open the aggregate sheet",
+  // Google lets nobody approve an import through the API: it takes one click in each importing sheet.
+  const link = (sheet) => Object.assign(document.createElement("a"), {
+    href: `https://docs.google.com/spreadsheets/d/${config.sheets[sheet]}/edit`, target: "_blank", rel: "noopener", textContent: SHEET_LABEL[sheet],
   });
   const list = document.createElement("ul");
   list.append(...lines.map((l) => Object.assign(document.createElement("li"), { textContent: l })));
-  status.replaceChildren("Done.", list, "Last step: ", open, ", click a cell showing #REF! in each tab and choose Allow access. Needed once per source sheet.");
+  status.replaceChildren("Done.", list, "Last step, once per source: open the ", link("aggregate"), " and the ", link("projects"),
+    ", click a cell showing #REF! and choose Allow access.");
 }
 
 // Brings the IC form in line with formItems(), keeping existing questions' IDs so response columns stay put.

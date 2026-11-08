@@ -862,12 +862,16 @@ let redraw = () => {};
 new ResizeObserver(() => redraw()).observe(svg);
 
 try {
-  const { data: sets } = await load(Object.values(SOURCES));
+  const { data: sets, mode } = await load(Object.values(SOURCES));
   const loaded = Object.fromEntries(Object.entries(SOURCES).map(([k, name]) => [k, sets[name]]));
-  // Everything is drawn per person and team: without staffing there is nothing to draw. Live has none yet.
-  if (!loaded.staffing.length) throw new Error("No staffing data in this mode yet.");
+  // Everything is drawn per person and team: without staffing there is nothing to draw.
+  if (!loaded.staffing.length) {
+    throw new Error(mode === "live" ? "The discipline sheet's staffing tab is empty: paste the ds-staffing snapshot into it." : "No staffing data.");
+  }
+  if (!loaded.demand.length) throw new Error("No project has answered the survey yet.");
   data = loaded;
-  personas = pickPersonas(loaded);
+  // Live ratings are anonymous counts, so there is nobody to view as: the individual view stays out.
+  personas = mode === "live" ? [{ key: "head", label: "Discipline head" }] : pickPersonas(loaded);
   // ?view=ic opens as an engineer, so the portal can link straight to the individual view.
   if (new URLSearchParams(location.search).get("view") === "ic") state.persona = personas[1]?.key ?? "head";
   populateScopes(loaded.staffing);

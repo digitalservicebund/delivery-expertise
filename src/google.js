@@ -5,6 +5,8 @@ import { rowsFromValues, valuesFromRows, tabRange } from "./sheets.js";
 
 const API = "https://sheets.googleapis.com/v4/spreadsheets";
 export const SCOPE = "https://www.googleapis.com/auth/drive.file";
+// Also asked for at sign-in: the person's own email, to know which teams they answer for. Non-sensitive.
+const EMAIL_SCOPE = "https://www.googleapis.com/auth/userinfo.email";
 // Kept for the browser tab's session only, so moving between pages doesn't ask again. Expires within the hour.
 const STORE = "google-token";
 
@@ -25,7 +27,8 @@ const loadPicker = () => loadScript("https://apis.google.com/js/api.js",
 function stored() {
   try {
     const t = JSON.parse(sessionStorage.getItem(STORE) ?? "null");
-    return t?.scopes.includes(SCOPE) && t.expires > Date.now() + 60_000 ? t.token : null;
+    // Tokens from before the email scope was added lack it, so they are replaced by a new sign-in.
+    return t?.scopes.includes(SCOPE) && t.scopes.includes(EMAIL_SCOPE) && t.expires > Date.now() + 60_000 ? t.token : null;
   } catch {
     return null;
   }
@@ -40,7 +43,7 @@ export async function token(clientId) {
   return new Promise((resolve, reject) => {
     oauth2.initTokenClient({
       client_id: clientId,
-      scope: SCOPE,
+      scope: `${SCOPE} ${EMAIL_SCOPE}`,
       callback: (res) => {
         if (res.error) return reject(new Error(res.error_description ?? res.error));
         try {
@@ -107,6 +110,22 @@ export async function withSheet(config, accessToken, sheetId, label, fn, viewId 
 
 export const tabTitles = async (accessToken, sheetId) =>
   new Set((await call(accessToken, `${API}/${sheetId}?fields=sheets.properties.title`)).sheets.map((s) => s.properties.title));
+
+// The signed-in person's email, from the userinfo.email scope asked for at sign-in.
+export async function whoAmI(accessToken) {
+  const { email } = await call(accessToken, "https://openidconnect.googleapis.com/v1/userinfo");
+  if (!email) throw new Error("Google didn't return an email address.");
+  return email;
+}
+
+// Appends rows below the tab's last row, in the order of header. RAW keeps values exactly as given.
+export async function appendRows(accessToken, sheetId, tab, header, rows) {
+  const values = rows.map((r) => header.map((h) => r[h] ?? ""));
+  const range = encodeURIComponent(`${tabRange(tab)}!A1`);
+  await call(accessToken, `${API}/${sheetId}/values/${range}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`, {
+    method: "POST", body: JSON.stringify({ values }),
+  });
+}
 
 // Google Forms: read a form, and apply batches of changes to it. Same drive.file scope: the form must have
 // been handed over in the Picker.

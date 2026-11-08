@@ -70,7 +70,8 @@ export function assessedScore({ self, peers = [], lead }) {
 // Ratings as known at the end of `quarter`, per person and expertise: latest self-assessment, peer reviews
 // given since, and the lead's latest rating. `asOf` is the most recent rating that went into the score.
 // Ratings belong to the person; `teamOf` places them in the team they are staffed on that quarter, and
-// people not on the staffing list (left, or not yet joined) are left out.
+// people not on the staffing list (left, or not yet joined) are left out. A rating that names its own team
+// keeps it instead: live supply comes as anonymous counts that belong to no one on the list.
 export function supplyAsOf(assessments, quarter, teamOf) {
   const byPerson = groupBy(assessments.filter((r) => r.quarter <= quarter), (r) => `${r.respondent}|${r.expertise}`);
   const latest = (rows, assessor) => rows.filter((r) => r.assessor === assessor).sort((a, b) => a.quarter.localeCompare(b.quarter)).at(-1);
@@ -80,8 +81,8 @@ export function supplyAsOf(assessments, quarter, teamOf) {
     const self = latest(rows, "self"), lead = latest(rows, "lead");
     const peers = rows.filter((r) => r.assessor === "peer" && (!self || r.quarter >= self.quarter));
     if (!self && !lead && !peers.length) continue;
-    const { respondent, expertise } = self ?? lead ?? peers[0];
-    const team = teamOf(respondent);
+    const { respondent, expertise, team: own } = self ?? lead ?? peers[0];
+    const team = teamOf(respondent) ?? own;
     if (!team) continue;
     const asOf = [self, lead, ...peers].filter(Boolean).map((r) => r.quarter).sort().at(-1);
     const score = assessedScore({ self: self && Number(self.level), peers: peers.map((p) => Number(p.level)), lead: lead && Number(lead.level) });
