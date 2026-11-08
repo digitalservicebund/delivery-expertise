@@ -1,9 +1,9 @@
-// The top areas: every area of expertise, including the ones teams add in the survey, grouped into at most
-// MAX_BUCKETS buckets. The IC form asks about the buckets, and the aggregate supply counts per bucket.
+// The top areas: every area of expertise, including the ones teams add in the survey, grouped into exactly
+// BUCKET_COUNT buckets. The IC form asks about the buckets, and the aggregate supply counts per bucket.
 // The buckets tab in the discipline sheet is the source of truth; regrouping only proposes, and an admin applies.
 // Pure, so it runs in tests. Gemini proposes the grouping, through copy and paste in the portal (src/portal.js).
 
-export const MAX_BUCKETS = 10;
+export const BUCKET_COUNT = 10;
 export const BUCKET_HEADER = ["area", "bucket", "generated_at"];
 // After this long, admins are nudged to regroup even without new areas: one survey round.
 const STALE_DAYS = 90;
@@ -70,8 +70,8 @@ export function pending(currentRows, areas, now = new Date()) {
 // pastes it into Gemini and pastes the answer back. Current buckets go in, so stable groups keep their names.
 export function bucketPrompt(areas, current) {
   return [
-    `Group these areas of software engineering expertise into at most ${MAX_BUCKETS} buckets of related skills, as an engineering discipline would staff and train for them. Some names are German.`,
-    "Every area goes in exactly one bucket. Name each bucket after its most typical area, or keep a current bucket's name where the bucket still fits.",
+    `Group these areas of software engineering expertise into exactly ${BUCKET_COUNT} buckets of related skills, as an engineering discipline would staff and train for them. Some names are German.`,
+    "Every area goes in exactly one bucket, and no bucket is empty. Name each bucket after its most typical area, or keep a current bucket's name where the bucket still fits.",
     "",
     "Areas:",
     ...areas.map((a) => `- ${a}`),
@@ -84,7 +84,8 @@ export function bucketPrompt(areas, current) {
 
 // Reads the pasted answer back: one "area | bucket" per line, tolerating markdown tables, bold, code fences and
 // chatter. Area names match case-insensitively. Returns { groups, errors }; any error means don't apply it.
-export function parseBuckets(text, areas) {
+// count: how many buckets there must be. Ten, or one per area when there are fewer areas.
+export function parseBuckets(text, areas, count = Math.min(BUCKET_COUNT, areas.length)) {
   const canonical = new Map(areas.map((a) => [a.toLowerCase(), a]));
   const bucketOf = new Map();
   const errors = [];
@@ -103,7 +104,7 @@ export function parseBuckets(text, areas) {
   const missing = areas.filter((a) => !bucketOf.has(a));
   if (missing.length) errors.push(`Missing: ${missing.join(", ")}`);
   const groups = readBuckets([...bucketOf].map(([area, bucket]) => ({ area, bucket }))).groups.sort((a, b) => byName(a.name, b.name));
-  if (groups.length > MAX_BUCKETS) errors.push(`${groups.length} buckets: at most ${MAX_BUCKETS}, please`);
+  if (groups.length !== count) errors.push(`${groups.length} bucket${groups.length === 1 ? "" : "s"}: exactly ${count}, please`);
   return { groups, errors };
 }
 

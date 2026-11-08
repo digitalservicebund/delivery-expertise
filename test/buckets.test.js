@@ -108,23 +108,26 @@ test("new areas, moves, renames, splits and merges are reported against the curr
 
 test("the prompt for Gemini lists every area once, the current buckets, and the answer format", () => {
   const text = bucketPrompt(["CSS", "Frontend", "Rust"], [{ name: "Web", areas: ["CSS", "Frontend"] }]);
-  assert.match(text, /at most 10 buckets/);
+  assert.match(text, /exactly 10 buckets/);
   assert.match(text, /^- Rust$/m);
   assert.match(text, /^Web: CSS, Frontend$/m);
   assert.match(text, /area \| bucket/);
   assert.doesNotMatch(bucketPrompt(["Rust"], []), /Current buckets/);
 });
 
-test("Gemini's answer is read leniently, but every area must be in exactly one of at most 10 buckets", () => {
+test("Gemini's answer is read leniently, but every area must be in exactly one of exactly 10 buckets", () => {
   const answer = "Here you go:\n```\narea | bucket\n| CSS | Web |\n**Frontend** | Web\nrust | Systems\n```";
-  assert.deepEqual(parseBuckets(answer, ["CSS", "Frontend", "Rust"]), {
+  assert.deepEqual(parseBuckets(answer, ["CSS", "Frontend", "Rust"], 2), {
     groups: [{ name: "Systems", areas: ["Rust"] }, { name: "Web", areas: ["CSS", "Frontend"] }],
     errors: [],
   });
-  const bad = parseBuckets("CSS | Web\nCSS | Other\nGo | Web", ["CSS", "Frontend"]);
+  const bad = parseBuckets("CSS | Web\nCSS | Other\nGo | Web", ["CSS", "Frontend"], 1);
   assert.deepEqual(bad.errors, ["CSS is in more than one bucket: Web, Other", "Not one of the areas: Go", "Missing: Frontend"]);
   const many = Array.from({ length: 11 }, (_, i) => `A${i}`);
-  assert.deepEqual(parseBuckets(many.map((a) => `${a} | ${a}`).join("\n"), many).errors, ["11 buckets: at most 10, please"]);
+  assert.deepEqual(parseBuckets(many.map((a) => `${a} | ${a}`).join("\n"), many).errors, ["11 buckets: exactly 10, please"]);
+  assert.deepEqual(parseBuckets(many.map((a, i) => `${a} | B${i % 9}`).join("\n"), many).errors, ["9 buckets: exactly 10, please"]);
+  // Fewer than ten areas: one bucket each.
+  assert.deepEqual(parseBuckets("A | X\nB | X", ["A", "B"]).errors, ["1 bucket: exactly 2, please"]);
 });
 
 test("with no current buckets every proposed one is new", () => {
