@@ -4,32 +4,88 @@
   <meta charset="utf-8">
   <meta name="robots" content="noindex, nofollow">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Engineering expertise</title>
-  <link rel="stylesheet" href="src/style.css">
-  <script type="module" src="src/main.js"></script>
+  <title>Engineering expertise: prototypes</title>
+  <style>
+    :root { --muted: #5f6368; --line: #e8eaed; --accent: #1a73e8; font: 15px/1.5 system-ui, sans-serif; color: #202124; }
+    body { margin: 0; background: #f8f9fa; }
+    main { max-width: 64rem; margin: 2rem auto; padding: 0 1rem; }
+    header { margin-bottom: 2rem; }
+    h1 { font-size: 1.6rem; margin: 0 0 0.5rem; }
+    h2 { font-size: 1.15rem; margin: 0; }
+    h3 { font-size: 1rem; margin: 0 0 0.25rem; }
+    p { margin: 0.4rem 0; }
+    .muted { color: var(--muted); font-size: 0.9rem; }
+    .role { margin-bottom: 2rem; }
+    .role > p { max-width: 44rem; }
+    .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr)); gap: 1rem; margin-top: 0.75rem; }
+    .card { display: flex; flex-direction: column; background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 1rem 1.25rem; color: inherit; text-decoration: none; }
+    a.card:hover, a.card:focus-visible { border-color: var(--accent); box-shadow: 0 1px 4px rgb(26 115 232 / 0.2); }
+    a.card h3 { color: var(--accent); }
+    .card .kind { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin-bottom: 0.25rem; }
+    .card .status { margin-top: auto; padding-top: 0.75rem; font-size: 0.8rem; }
+    .status span { display: inline-block; padding: 0.05rem 0.5rem; border-radius: 999px; background: #e6f4ea; color: #137333; }
+    .status span.planned { background: #f1f3f4; color: var(--muted); }
+    div.card { border-style: dashed; }
+  </style>
 </head>
 <body>
-  <header>
-    <h1>Engineering expertise <span id="quarter"></span></h1>
-    <ul class="legend">
-      <li><i class="short"></i>Critical shortage</li>
-      <li><i class="strained"></i>Undersupplied</li>
-      <li><i class="fragile"></i>Covered but fragile</li>
-      <li><i class="covered"></i>Well covered</li>
-      <li><i class="surplus"></i>Oversupplied</li>
-      <li><i class="hatch-key"></i>Hatched: filled by someone more senior</li>
-    </ul>
-    <a class="page-link" href="survey.html">Survey prototype →</a>
-    <div class="header-row">
-      <div id="personas" role="group" aria-label="View as"></div>
-      <p id="progress" class="muted"></p>
-    </div>
-  </header>
-  <nav aria-label="Projects and teams"><ul id="scopes"></ul><div id="for-you" hidden></div></nav>
   <main>
-    <svg id="chart" role="img" aria-label="Demanded expertise by level and FTE"></svg>
-    <section id="detail" hidden></section>
+    <header>
+      <h1>Engineering expertise</h1>
+      <p>Prototypes for collecting what projects need, what people can do, and showing where the two meet. Pick the role you want to try them as. All data is dummy data generated from anonymised staffing.</p>
+    </header>
+
+    <section class="role" aria-labelledby="head">
+      <h2 id="head">Discipline head</h2>
+      <p class="muted">See where the discipline is short or has more than it needs, across all projects and teams, and decide where to borrow, grow or buy.</p>
+      <div class="cards">
+        <a class="card" href="discipline.html">
+          <div class="kind">Visualisation</div>
+          <h3>Discipline view</h3>
+          <p>Demand against supply per area of expertise and working method, by project and team, with recommendations.</p>
+          <p class="status"><span>Prototype</span></p>
+        </a>
+        <div class="card" aria-disabled="true">
+          <div class="kind">Survey</div>
+          <h3>Discipline survey</h3>
+          <p>Add what project demand doesn't show: how many people leads the discipline needs, and the strategic areas it wants to grow.</p>
+          <p class="status"><span class="planned">Planned</span></p>
+        </div>
+      </div>
+    </section>
+
+    <section class="role" aria-labelledby="project">
+      <h2 id="project">Projects</h2>
+      <p class="muted">For project and tech leads: tell the discipline each quarter what engineering work your team needs and how well it is covered.</p>
+      <div class="cards">
+        <a class="card" href="survey.html">
+          <div class="kind">Survey</div>
+          <h3>Project survey</h3>
+          <p>Pick the areas your team needs from a word cloud, then say how many people and how well covered for each. About ten minutes.</p>
+          <p class="status"><span>Prototype</span></p>
+        </a>
+      </div>
+    </section>
+
+    <section class="role" aria-labelledby="people">
+      <h2 id="people">People</h2>
+      <p class="muted">For individual engineers: rate your own expertise, have it validated by peers, then see where your skills are needed and where to grow.</p>
+      <div class="cards">
+        <div class="card" aria-disabled="true">
+          <div class="kind">Survey</div>
+          <h3>Self-assessment &amp; peer validation</h3>
+          <p>Rate yourself on the organisation's top 10 areas of expertise and ask peers to validate. Completing it unlocks your view.</p>
+          <p class="status"><span class="planned">Planned</span></p>
+        </div>
+        <a class="card" href="discipline.html?view=ic">
+          <div class="kind">Visualisation</div>
+          <h3>Your expertise</h3>
+          <p>Your ratings against demand across the whole discipline: skills in demand, room to grow, areas worth learning.</p>
+          <p class="status"><span>Prototype</span> <span class="planned">Moving to its own page</span></p>
+        </a>
+      </div>
+    </section>
+
   </main>
-  <nav aria-label="Expertise"><ul id="expertise"></ul></nav>
 </body>
 </html>

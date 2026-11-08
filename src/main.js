@@ -869,6 +869,8 @@ try {
   const loaded = Object.fromEntries(await Promise.all(Object.entries(SOURCES).map(async ([k, url]) => [k, parseCsv(await text(url))])));
   data = loaded;
   personas = pickPersonas(loaded);
+  // ?view=ic opens as an engineer, so the portal can link straight to the individual view.
+  if (new URLSearchParams(location.search).get("view") === "ic") state.persona = personas[1]?.key ?? "head";
   populateScopes(loaded.staffing);
   update();
   document.getElementById("quarter").textContent = modelFor("").quarters.at(-1);

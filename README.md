@@ -4,7 +4,7 @@ Collating and visualising project demand matched against current delivery capabi
 
 ```sh
 npm run data   # generates the dummy data in data/ from teams.csv (needed once before npm start)
-npm start      # serves on http://localhost:8000 (survey prototype at /survey.html)
+npm start      # serves on http://localhost:8000: a portal linking every prototype by use case
 npm test
 ```
 
