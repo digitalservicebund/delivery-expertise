@@ -36,12 +36,18 @@ export const AREAS = [
   ["Accessibility", COP, ["Fix audit findings, test with assistive technology", "Plan accessible patterns for a new journey", "Define the product's accessibility strategy and BITV compliance route", "Influence accessibility standards across government services"]],
   ["Mobile", COP, ["Build features in a mobile app", "Design a mobile app's architecture", "Decide native, hybrid or web", "Shape mobile government services"]],
   ["Open source", COP, ["Contribute to an open-source dependency", "Plan publishing a product as open source", "Own the organisation's open-source practice", "Shape open-source policy across government"]],
+  ["Feature development", COP, ["Build features to the team's conventions", "Plan how a feature is built and rolled out", "Set how teams deliver features end to end", "Shape product delivery practice across government"]],
+  ["Operations", PLATFORM, ["Run and monitor a service in production", "Design how a service is operated and scaled", "Own operations for a product and its service levels", "Shape operations practice across government"]],
+  ["Maintenance", COP, ["Update dependencies and fix bugs", "Plan maintenance work and technical debt", "Own a product's maintenance strategy and life cycle", "Shape how government keeps services maintained"]],
+  ["Support", COP, ["Answer support requests and fix what users report", "Design support processes and escalation", "Own a product's support model", "Shape service support across government"]],
+  ["On-call & incident response", PLATFORM, ["Take on-call shifts and handle incidents", "Design on-call rotas, runbooks and post-mortems", "Own incident management for a product", "Shape incident response across government services"]],
+  ["Release management", COP, ["Ship releases to the team's process", "Plan release schedules and rollouts", "Own how a product releases and versions", "Shape release practice across teams"]],
 ];
 export const AREA_NAMES = AREAS.map(([name]) => name);
 // What the IC form asks about until the portal's grouping is applied.
 export const DEFAULT_BUCKETS = [
-  "Discovery & Inception", "Frontend", "Backend", "Architecture", "Security",
-  "DevOps, CI/CD & Infrastructure", "Quality & Documentation", "Data & AI", "Compliance & Privacy", "Accessibility",
+  "Discovery & Inception", "Frontend", "Backend", "Architecture", "Security & Compliance",
+  "DevOps, CI/CD & Infrastructure", "Quality & Documentation", "Data & AI", "Software lifecycle", "Accessibility",
 ];
 // Which suggested areas each default bucket covered, for mapping answers given under the defaults to the buckets
 // that replaced them (inferHistory in src/buckets.js).
@@ -50,10 +56,15 @@ export const DEFAULT_BUCKET_AREAS = {
   Frontend: ["Frontend development", "Design systems", "Performance", "Mobile"],
   Backend: ["Backend development", "APIs & integration"],
   Architecture: ["Software architecture", "Legacy modernisation"],
-  Security: ["Application security", "Identity & access"],
+  "Security & Compliance": ["Application security", "Identity & access", "Data protection", "IT security compliance"],
   "DevOps, CI/CD & Infrastructure": ["CI/CD", "Cloud infrastructure", "Containers & orchestration", "Observability", "Developer experience"],
   "Quality & Documentation": ["Test automation", "Technical documentation"],
   "Data & AI": ["Data engineering", "Data analysis", "Search", "Machine learning", "AI engineering"],
-  "Compliance & Privacy": ["Data protection", "IT security compliance"],
+  "Software lifecycle": ["Feature development", "Operations", "Maintenance", "Support", "On-call & incident response", "Release management", "Open source"],
   Accessibility: ["Accessibility"],
+};
+// Default buckets that were later merged, kept so answers given under them still find their areas.
+export const RETIRED_DEFAULT_AREAS = {
+  Security: ["Application security", "Identity & access"],
+  "Compliance & Privacy": ["Data protection", "IT security compliance"],
 };

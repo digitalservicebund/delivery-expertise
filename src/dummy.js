@@ -40,12 +40,18 @@ const EXPERTISE = {
   Accessibility: { prevalence: 0.3, trend: 0.75 },
   Mobile: { prevalence: 0.05, trend: 0.95 },
   "Open source": { prevalence: 0.06, trend: 1.02 },
+  "Feature development": { prevalence: 0.5, trend: 1.0 },
+  Operations: { prevalence: 0.2, trend: 1.02 },
+  Maintenance: { prevalence: 0.3, trend: 1.04 },
+  Support: { prevalence: 0.15, trend: 1.0 },
+  "On-call & incident response": { prevalence: 0.12, trend: 1.05 },
+  "Release management": { prevalence: 0.1, trend: 1.0 },
 };
 
 // Every matching rule contributes, in order; a team works with at most five areas.
 const AFFINITY = [
   [/agentic|ai\b/i, ["AI engineering", "Backend development", "Data protection"]],
-  [/platform/i, ["CI/CD", "Cloud infrastructure", "Containers & orchestration", "Application security"]],
+  [/platform/i, ["CI/CD", "Cloud infrastructure", "Operations", "On-call & incident response", "Application security"]],
   [/rast|zov|kompla|justiz|kommunikation|postfach/i, ["Backend development", "APIs & integration", "Application security"]],
   [/migration/i, ["Legacy modernisation", "Data engineering"]],
   [/ausgaben|data/i, ["Data engineering", "Data analysis", "Frontend development"]],
@@ -55,7 +61,7 @@ const AFFINITY = [
   [/discovery|konzept|exploration/i, ["Technical discovery", "Prototyping"]],
   [/discovery|konzept|exploration|legistik|regelung|stabsstelle/i, ["Software architecture"]],
   [/valid/i, ["Test automation"]],
-  [/./, ["Backend development", "Frontend development", "Test automation"]],
+  [/./, ["Feature development", "Backend development", "Frontend development", "Maintenance", "Test automation"]],
 ];
 
 // Areas teams add themselves in the survey, beyond the suggested ones, with what they need there. Each project team

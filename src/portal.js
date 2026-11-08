@@ -5,7 +5,7 @@ import { bar, currentMode, loadConfig, DATA_TABS, SHEET_LABEL } from "./source.j
 import { token, hasToken, canEdit, readTabs, readHeader, replaceTabs, setUpTabs, withSheet, tabTitles, getForm, updateForm } from "./google.js";
 import { liveLayout } from "./sheets.js";
 import { FORM_INFO, formItems, formRequests, branchRequest, supplyFormula } from "./icform.js";
-import { AREA_NAMES, DEFAULT_BUCKETS, DEFAULT_BUCKET_AREAS } from "./areas.js";
+import { AREA_NAMES, DEFAULT_BUCKETS, DEFAULT_BUCKET_AREAS, RETIRED_DEFAULT_AREAS } from "./areas.js";
 import { formRows } from "./prefill.js";
 import { compareBuckets, bucketPrompt, parseBuckets, readBuckets, bucketRows, areasToGroup, pending, topAreas, nextHistory, aliasesOf, inferHistory } from "./buckets.js";
 
@@ -73,7 +73,7 @@ async function readBucketTabs(config, t, sheet = "discipline") {
 async function recoverHistory(config, t, tab, buckets, history, lines) {
   status.replaceChildren("Looking for former buckets in the IC responses…");
   const headers = await readHeader(t, config.sheets.icResponses, tab);
-  const { rows, unresolved } = inferHistory(headers, buckets, history, DEFAULT_BUCKET_AREAS, new Date().toISOString());
+  const { rows, unresolved } = inferHistory(headers, buckets, history, { ...DEFAULT_BUCKET_AREAS, ...RETIRED_DEFAULT_AREAS }, new Date().toISOString());
   if (rows.length) {
     const id = config.sheets.discipline;
     await withSheet(config, t, id, SHEET_LABEL.discipline, () => replaceTabs(t, id, { "bucket-history": [...history, ...rows] }));

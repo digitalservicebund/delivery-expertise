@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { compareBuckets, bucketPrompt, parseBuckets, readBuckets, bucketRows, areasToGroup, pending, topAreas, inBuckets, BUCKET_HEADER, HISTORY_HEADER, nextHistory, aliasesOf, renamedTo, inferHistory } from "../src/buckets.js";
 import { liveLayout } from "../src/sheets.js";
-import { AREA_NAMES, DEFAULT_BUCKETS, DEFAULT_BUCKET_AREAS } from "../src/areas.js";
+import { AREA_NAMES, DEFAULT_BUCKETS, DEFAULT_BUCKET_AREAS, RETIRED_DEFAULT_AREAS } from "../src/areas.js";
 
 test("the areas to group are the standard ones, every surveyed area and every grouped one, without domain expertise", () => {
   const demand = [{ expertise: "Frontend" }, { expertise: "Rust" }, { expertise: "Domain expertise", domain: "Tax" }, { expertise: " " }];
@@ -208,4 +208,10 @@ test("former buckets are found in the IC responses' columns and mapped retroacti
 test("every default bucket's areas are suggested areas", () => {
   assert.deepEqual(Object.keys(DEFAULT_BUCKET_AREAS), DEFAULT_BUCKETS);
   for (const areas of Object.values(DEFAULT_BUCKET_AREAS)) for (const a of areas) assert.ok(AREA_NAMES.includes(a), a);
+});
+
+test("every suggested area is in exactly one default bucket", () => {
+  const all = Object.values(DEFAULT_BUCKET_AREAS).flat();
+  assert.deepEqual([...all].sort(), [...AREA_NAMES].sort());
+  for (const areas of Object.values(RETIRED_DEFAULT_AREAS)) for (const a of areas) assert.ok(AREA_NAMES.includes(a), a);
 });
