@@ -1,5 +1,5 @@
-// The engineer's own answers, kept in this browser by the IC page (ic.html) and read by the discipline view's
-// own-view mode (discipline.html?view=me). { ratings: area -> rating, submitted: boolean }.
+// The engineer's own answers, kept in this browser by the self-assessment page (self-assessment.html) and read
+// by their own view of the charts (ic.html). { ratings: area -> rating, submitted: boolean }.
 // Storage can be unavailable (private windows, blocked site data): then nothing is kept beyond this visit.
 const STORE = "ic-self-assessment";
 

@@ -5,49 +5,31 @@
   <meta name="robots" content="noindex, nofollow">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Engineering expertise: your expertise</title>
-  <style>
-    :root { --muted: #5f6368; --line: #e8eaed; --accent: #1a73e8; font: 15px/1.5 system-ui, sans-serif; color: #202124; }
-    body { margin: 0; background: #f8f9fa; }
-    main { max-width: 64rem; margin: 2rem auto; padding: 0 1rem; }
-    section, header { background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 1.25rem 1.5rem; margin-bottom: 1rem; }
-    h1 { font-size: 1.4rem; margin: 0 0 0.5rem; }
-    h2 { font-size: 1.1rem; margin: 0 0 0.25rem; }
-    h3 { font-size: 0.95rem; margin: 1.25rem 0 0.4rem; }
-    p { margin: 0.5rem 0; }
-    a { color: var(--accent); }
-    .muted { color: var(--muted); font-size: 0.9rem; }
-    .table-wrap { overflow-x: auto; }
-    table { border-collapse: collapse; width: 100%; min-width: 40rem; }
-    th, td { padding: 0.35rem 0.5rem; border-bottom: 1px solid var(--line); text-align: center; }
-    th { font-weight: 500; color: var(--muted); font-size: 0.8rem; }
-    th:first-child, td:first-child { text-align: left; width: 14rem; }
-    td label { display: block; cursor: pointer; padding: 0.25rem 0; }
-    tr.unanswered td:first-child { color: #b3261e; }
-    .actions { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center; margin-top: 1rem; }
-    button { font: inherit; padding: 0.5rem 1.25rem; border: 0; border-radius: 4px; background: var(--accent); color: #fff; cursor: pointer; }
-    button:disabled { background: #9aa0a6; cursor: default; }
-    button.secondary { background: #fff; color: var(--accent); border: 1px solid var(--accent); }
-  </style>
+  <link rel="stylesheet" href="src/style.css">
   <script type="module" src="src/ic.js"></script>
 </head>
 <body>
+  <header>
+    <h1>Your expertise <span id="quarter"></span></h1>
+    <ul class="legend">
+      <li><i class="short"></i>Critical shortage</li>
+      <li><i class="strained"></i>Undersupplied</li>
+      <li><i class="fragile"></i>Covered but fragile</li>
+      <li><i class="covered"></i>Well covered</li>
+      <li><i class="surplus"></i>Oversupplied</li>
+      <li><i class="hatch-key"></i>Hatched: filled by someone more senior</li>
+    </ul>
+    <a class="page-link" href="./">← All prototypes</a>
+    <a class="page-link" href="self-assessment.html">Change your answers</a>
+    <div class="header-row">
+      <p id="progress" class="muted"></p>
+    </div>
+  </header>
+  <nav aria-label="For you"><ul id="scopes" hidden></ul><div id="for-you" hidden></div></nav>
   <main>
-    <header>
-      <h1>Your expertise</h1>
-      <p class="muted">Rate how you work in each of the discipline's top areas today. Your answers stay in this browser until you submit them in the Google Form, which opens with them filled in. Then you see the discipline charts from your own answers: where your skills are needed and where to grow, against demand across the whole discipline. No team or colleague is ever named.</p>
-      <p><a href="./">← All prototypes</a> <span id="own-view" hidden>· <a href="discipline.html?view=me">See your charts →</a></span></p>
-    </header>
-    <section aria-labelledby="rate-heading">
-      <h2 id="rate-heading">Rate yourself</h2>
-      <p class="muted">Learning: building it up. Operative: implementing, applying standard methods. Conceptual: planning, shaping and adapting methods. Strategic: innovating, setting guidelines, leading. Comprehensive: strategic across the wider ecosystem.</p>
-      <p id="rate-note" class="muted" hidden></p>
-      <div class="table-wrap"><table id="ratings"></table></div>
-      <div class="actions">
-        <button type="button" id="submit" disabled>Submit in Google Form</button>
-        <button type="button" id="forget" class="secondary">Clear my answers</button>
-        <output id="rate-status" class="muted" aria-live="polite"></output>
-      </div>
-    </section>
+    <svg id="chart" role="img" aria-label="Demanded expertise by level and FTE"></svg>
+    <section id="detail" hidden></section>
   </main>
+  <nav aria-label="Expertise"><ul id="expertise"></ul></nav>
 </body>
 </html>

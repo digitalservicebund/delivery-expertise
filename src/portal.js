@@ -257,6 +257,8 @@ const isHead = async (config, t, { ask }) => {
 };
 const showPanel = async (config) => {
   panel.hidden = false;
+  // The discipline view and survey are for discipline heads only; their pages check again.
+  document.getElementById("head-section").hidden = false;
   access.hidden = true;
   await showBuckets(config, await token(config.clientId)).catch((err) => bucketStatus.replaceChildren(`Could not read the buckets. ${err.message}`));
 };

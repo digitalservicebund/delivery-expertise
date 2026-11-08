@@ -1,4 +1,7 @@
-import { load, currentMode } from "./source.js";
+// The charts shared by the discipline view (discipline.html, src/discipline.js) and an engineer's own view
+// (ic.html, src/ic.js). start() draws one or the other.
+import { load, currentMode, SHEET_LABEL } from "./source.js";
+import { withSheet, canEdit } from "./google.js";
 import { restoreAssessment } from "./selfassessment.js";
 import { ratingsToProfile } from "./prefill.js";
 import { inBuckets } from "./buckets.js";
@@ -17,8 +20,8 @@ const STATUS_LABEL = { short: "Critical shortage", strained: "Undersupplied", ov
 const SEVERITY = ["short", "strained", "fragile", "overqualified", "surplus", "covered"];
 const HTML = new Set(["table", "thead", "tbody", "tr", "td", "th", "h2", "p", "ul", "li", "i", "strong", "button", "span", "h3"]);
 const forYou = document.getElementById("for-you");
-const personaSwitch = document.getElementById("personas");
-// The persona key of an engineer's own view (?view=me), drawn from their answers on the IC page.
+const personaSwitch = document.getElementById("personas"); // absent on ic.html
+// The persona key of an engineer's own view (ic.html), drawn from their answers on the self-assessment page.
 const OWN = "me";
 
 const svg = document.getElementById("chart");
@@ -762,6 +765,7 @@ function pickPersonas({ staffing, assessments }) {
 }
 
 function renderPersonas() {
+  if (!personaSwitch) return;
   personaSwitch.replaceChildren();
   for (const p of personas) {
     const button = el("button", { "aria-pressed": String(p.key === state.persona) }, personaSwitch, p.label);
@@ -886,22 +890,44 @@ svg.addEventListener("click", () => state.selected && select(null));
 let redraw = () => {};
 new ResizeObserver(() => redraw()).observe(svg);
 
-// ?view=me: an engineer's own view, from the answers they gave on the IC page and keep in this browser. Discipline-
-// wide only, with no projects, teams or personas, and no staffing, which only discipline heads can open live.
-const ownView = new URLSearchParams(location.search).get("view") === "me";
-const saved = ownView ? restoreAssessment() : null;
-if (ownView && !saved.submitted) location.replace("ic.html");
+// The own view (ic.html): an engineer's answers from the self-assessment page, kept in this browser.
+let ownView = false;
+let saved = null;
 
-try {
-  if (ownView) {
-    personaSwitch.remove(); // hidden alone loses to its display rule in style.css
-    document.getElementById("own-links").hidden = false;
+// Only discipline heads see the discipline view: whoever may edit the discipline sheet, as on the portal.
+async function isHead({ config, token }) {
+  const id = config.sheets.discipline;
+  try {
+    return await withSheet(config, token, id, SHEET_LABEL.discipline, () => canEdit(token, id));
+  } catch {
+    return false;
   }
+}
+
+// own: false for the discipline view (discipline.html), true for an engineer's own view (ic.html): the same charts,
+// drawn from their own answers, discipline-wide only, with no projects, teams or personas, and no staffing, which
+// only discipline heads can open live.
+export async function start({ own = false } = {}) {
+  ownView = own;
+  saved = own ? restoreAssessment() : null;
+  if (own && !saved.submitted) return location.replace("self-assessment.html");
+  try {
+    await show();
+  } catch (err) {
+    document.getElementById("progress").textContent = `Could not load data. ${err.message}`;
+  }
+}
+
+async function show() {
   // Supply is counted per bucket, so demand is mapped to the same buckets. Live supply comes per bucket already;
   // prototype ratings and activity are per area and get mapped too. Without a buckets tab nothing changes.
   const live = (await currentMode()) === "live";
   const names = Object.values(SOURCES).filter((n) => !(ownView && live && ["staffing", "historical-activity"].includes(n)));
-  const { data: sets, mode } = await load([...names, "buckets"]);
+  const session = await load([...names, "buckets"]);
+  if (!ownView && !(await isHead(session))) {
+    throw new Error("Only discipline heads, who can edit the discipline sheet, can see the discipline view. Your own view is on the “Your expertise” page.");
+  }
+  const { data: sets, mode } = session;
   const loaded = Object.fromEntries(Object.entries(SOURCES).map(([k, name]) => [k, sets[name] ?? []]));
   const { demand, plan, assessments, activity } = loaded;
   Object.assign(loaded, inBuckets(mode === "live" ? { demand, plan } : { demand, plan, assessments, activity }, sets.buckets ?? []));
@@ -917,12 +943,8 @@ try {
   } else {
     // Live ratings are anonymous counts, so there is nobody to view as: the individual view stays out.
     personas = mode === "live" ? [{ key: "head", label: "Discipline head" }] : pickPersonas(loaded);
-    // ?view=ic opens as an example engineer, for discipline heads to see what engineers see.
-    if (new URLSearchParams(location.search).get("view") === "ic") state.persona = personas[1]?.key ?? "head";
     populateScopes(loaded.staffing);
   }
   update();
   document.getElementById("quarter").textContent = modelFor("").quarters.at(-1);
-} catch (err) {
-  document.getElementById("progress").textContent = `Could not load data. ${err.message}`;
 }
