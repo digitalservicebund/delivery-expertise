@@ -8,7 +8,7 @@ import { whoAmI, appendRows, withSheet } from "./google.js";
 import { DEMAND_HEADER } from "./sheets.js";
 import { teamsOf, projectsByTeam } from "./teams.js";
 import { relevance, matches } from "./cloud.js";
-import { AREAS, COP, SUPPORT_KEY } from "./areas.js";
+import { COP, SUPPORT_KEY, readAreas } from "./areas.js";
 import { effectiveBuckets, suggestBuckets, demandAreas, surveySections, inBuckets } from "./buckets.js";
 import { METHODS as METHOD_LEVEL, PEOPLE as PEOPLE_COUNT, LEVELS, supplyAsOf, assessedCoverage, WORKING_DAYS_PER_QUARTER, UTILISATION, BOOKABLE_DAYS_PER_QUARTER } from "./model.js";
 
@@ -203,13 +203,15 @@ function rowsFor(form, team) {
 // Missing datasets come back empty: the survey still works, just without suggestions or a team list.
 // Live reads the teams tab instead of staffing: staffing sits in the discipline sheet, which project leads
 // can't open. The teams tab says who may answer for which team.
-const BUCKET_TABS = ["buckets", "bucket-history"];
+const BUCKET_TABS = ["buckets", "bucket-history", "areas"];
 const LIVE_TABS = [...DATA_TABS.filter((n) => n !== "staffing"), "teams", ...BUCKET_TABS];
 const session = await load((await currentMode()) === "live" ? LIVE_TABS : [...DATA_TABS, ...BUCKET_TABS]);
 const sets = session.data;
 const [staffing, plan, demand, activity, assessments] = ["staffing", "discipline-plan", "project-demand", "historical-activity", "expertise-assessments"].map((n) => sets[n] ?? []);
 // The buckets in force (the default ten until a grouping is applied) and which bucket each area is in.
-const bucketRows = effectiveBuckets(sets.buckets ?? []);
+// The area list from the areas tab (the built-in one while it is empty).
+const catalogueAreas = readAreas(sets.areas ?? []);
+const bucketRows = effectiveBuckets(sets.buckets ?? [], catalogueAreas.defaultBucketAreas);
 const bucketOfArea = new Map(bucketRows.map((r) => [r.area, r.bucket]));
 const bucketNames = [...new Set(bucketRows.map((r) => r.bucket))];
 // Earlier answers, activity and ratings per bucket, whatever they were recorded under.
@@ -295,7 +297,7 @@ const built = new Map();
 // project's domain. Each knows its bucket; a write-in another team placed keeps the bucket that team chose.
 function catalogueFor(team) {
   const domain = domainOf.get(projectOf.get(team));
-  const list = AREAS.map(([name, support, examples]) => ({ id: slug(name), name, bucket: bucketOfArea.get(name) ?? null, support, examples }));
+  const list = catalogueAreas.areas.map(([name, support, examples]) => ({ id: slug(name), name, bucket: bucketOfArea.get(name) ?? null, support, examples: examples.every(Boolean) ? examples : GENERIC_CUSTOM }));
   if (domain) list.push({
     id: "domain", name: `Domain expertise: ${domain}`, domain, examples: DOMAIN_EXAMPLES[domain] ?? GENERIC_DOMAIN,
     note: "From your project's domain. If your team also works in another domain, add it.",

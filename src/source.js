@@ -22,9 +22,10 @@ const LIVE = {
   // Which bucket each area is in: the IC form and supply are per bucket (src/buckets.js).
   buckets: ["aggregate", "buckets"],
   "bucket-history": ["aggregate", "bucket-history"],
+  areas: ["aggregate", "areas"],
 };
 // Datasets a page can do without: the buckets tab exists only once a grouping has been applied.
-const OPTIONAL = new Set(["buckets", "bucket-history"]);
+const OPTIONAL = new Set(["buckets", "bucket-history", "areas"]);
 const MODE_KEY = "data-mode";
 const LABEL = { prototype: "Prototype data", live: "Live data", unconfigured: "Not set up" };
 

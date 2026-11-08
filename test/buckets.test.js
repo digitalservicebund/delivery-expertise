@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { compareBuckets, bucketPrompt, parseBuckets, readBuckets, bucketRows, areasToGroup, pending, topAreas, inBuckets, BUCKET_HEADER, HISTORY_HEADER, nextHistory, aliasesOf, renamedTo, inferHistory, effectiveBuckets, suggestBuckets, demandAreas, surveySections } from "../src/buckets.js";
 import { liveLayout } from "../src/sheets.js";
-import { AREA_NAMES, DEFAULT_BUCKETS, DEFAULT_BUCKET_AREAS, RETIRED_DEFAULT_AREAS } from "../src/areas.js";
+import { AREA_NAMES, DEFAULT_BUCKETS, DEFAULT_BUCKET_AREAS, RETIRED_DEFAULT_AREAS, AREA_HEADER } from "../src/areas.js";
 
 test("the areas to group are the standard ones, every surveyed area and every grouped one, without domain expertise", () => {
   const demand = [{ expertise: "Frontend" }, { expertise: "Rust" }, { expertise: "Domain expertise", domain: "Tax" }, { expertise: " " }];
@@ -34,6 +34,8 @@ test("the discipline sheet gets a buckets tab, and the aggregate sheet imports i
   assert.deepEqual(layout.discipline.buckets, { header: BUCKET_HEADER });
   assert.deepEqual(layout.discipline["bucket-history"], { header: HISTORY_HEADER });
   assert.match(layout.aggregate["bucket-history"].formula, /IMPORTRANGE\("D", "bucket-history!A:C"\)/);
+  assert.deepEqual(layout.discipline.areas, { header: AREA_HEADER });
+  assert.match(layout.aggregate.areas.formula, /IMPORTRANGE\("D", "areas!A:G"\)/);
   assert.equal(layout.aggregate.buckets.formula, '=QUERY(IMPORTRANGE("D", "buckets!A:C"), "select Col1, Col2, Col3 where Col1 is not null", 1)');
 });
 

@@ -82,6 +82,8 @@ One tab, `plan`, in the shape of `data/discipline-plan.csv` plus who submitted i
 quarter | kind | subject | method | value | reason | submitted_by | submitted_at
 ```
 
+An `areas` tab holds the area list: `area | default_bucket | support | operative | conceptual | strategic | comprehensive`, one row per area. It is the source for the survey's word cloud, its examples per working method and the support it offers (`cop`, `platform` or `legal`), and the default buckets used until a grouping is applied. **Set up live sheets** fills it once with the built-in list (`src/areas.js`), and from then on it is edited here; it warns when the default buckets aren't exactly ten or an area has none. **Load dummy data** copies it into the prototype sheet.
+
 A `buckets` tab holds the top areas: `area | bucket | generated_at`, one row per area. It is the source of truth for the IC form's grid and the supply counts, which ask and count per bucket. The portal's **Top areas** panel prompts discipline heads when areas are in no bucket or the grouping is over a quarter old, copies a prompt for Gemini (which they run in their own Gemini tab), reads the pasted answer back, previews it against the current buckets and writes it on **Apply**. The app never calls Gemini itself. Rename a bucket by editing the `bucket` column; a renamed bucket gets a new response column in the IC form.
 
 A `bucket-history` tab records where every former bucket went: `bucket | now | changed_at`. **Apply** adds a row for each renamed bucket (to its new name) and each merged one (to the bucket that took most of its areas), and moves earlier rows along. A name that becomes a bucket again is dropped. Answers given under a former bucket, in the IC form or saved in an engineer's browser, count towards the bucket it went to. Project survey answers need none of this: they are stored per area and mapped through `buckets` whenever they are read.
@@ -125,6 +127,8 @@ The first time each `IMPORTRANGE` source is used, the sheet's owner must click *
 Rows for policy domains come after the buckets, labelled `Domain expertise: <domain>`, counted from the domain grid. Every column whose header matches is counted, duplicates included: Google adds a second column of the same name when a question is recreated, so a person's highest level across them counts.
 
 IC answers are stored per bucket name, so after a regrouping older answers sit in former buckets' columns. `supply` counts them with the bucket each went to, from the `bucket-history` tab: per person, the highest level across the bucket's own column and its former buckets' columns.
+
+**`areas`** copies the discipline sheet's `areas` tab, so the project survey and the IC pages can read the area list.
 
 **`buckets`** copies the discipline sheet's `buckets` tab: area and bucket names only. In live mode the discipline view maps demand and planned adjustments to these buckets, so they meet supply, which is counted per bucket. Areas in no bucket and domain expertise stay as they are.
 

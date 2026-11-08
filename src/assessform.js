@@ -4,7 +4,7 @@
 import { load, SHEET_LABEL } from "./source.js";
 import { readTabs, withSheet } from "./google.js";
 import { topAreas } from "./buckets.js";
-import { DEFAULT_BUCKETS } from "./areas.js";
+import { readAreas } from "./areas.js";
 import { RATINGS, DOMAIN_GRID as DOMAIN } from "./icform.js";
 import { readFormRows, prefillUrl, followBuckets } from "./prefill.js";
 import { restoreAssessment, saveAssessment } from "./selfassessment.js";
@@ -22,9 +22,9 @@ const rateStatus = document.getElementById("rate-status");
 const rateNote = document.getElementById("rate-note");
 
 // Only the buckets are needed here: they are the questions. Optional in both modes.
-const session = await load(["buckets", "bucket-history"]);
+const session = await load(["buckets", "bucket-history", "areas"]);
 const buckets = session.data.buckets ?? [];
-const areas = topAreas(buckets, DEFAULT_BUCKETS);
+const areas = topAreas(buckets, readAreas(session.data.areas ?? []).defaultBuckets);
 if (!buckets.length) {
   rateNote.hidden = false;
   rateNote.textContent = "The discipline hasn't grouped its areas into buckets yet, so these are the default ten.";

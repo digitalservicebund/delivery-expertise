@@ -238,9 +238,10 @@ export function compareBuckets(current, proposed) {
 }
 
 // The buckets in force: the applied grouping, or until there is one, the default buckets and the areas they cover.
-export function effectiveBuckets(rows) {
+// defaultBucketAreas: from the areas tab (readAreas), or the built-in list.
+export function effectiveBuckets(rows, defaultBucketAreas = DEFAULT_BUCKET_AREAS) {
   if (rows.some((r) => r.area && r.bucket)) return rows;
-  return Object.entries(DEFAULT_BUCKET_AREAS).flatMap(([bucket, areas]) => areas.map((area) => ({ area, bucket })));
+  return Object.entries(defaultBucketAreas).flatMap(([bucket, areas]) => areas.map((area) => ({ area, bucket })));
 }
 
 // A demand row's areas. Survey answers are per bucket and name the picked areas in their areas column ("; ");

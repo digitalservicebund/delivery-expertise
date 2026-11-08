@@ -2,6 +2,7 @@
 // the pages work with, the same shape parseCsv gives. Pure, so it runs in tests.
 import { STAFFING_HEADER, teamsFormula } from "./teams.js";
 import { BUCKET_HEADER, HISTORY_HEADER } from "./buckets.js";
+import { AREA_HEADER } from "./areas.js";
 
 export function rowsFromValues(values = []) {
   const [header = [], ...body] = values;
@@ -58,7 +59,7 @@ export function liveLayout(sheets) {
     projects: { demand: { header: DEMAND_HEADER }, teams: { formula: teamsFormula(sheets.discipline) } },
     // Pasted by hand from the ds-staffing snapshot export. Holds names and levels: discipline heads only.
     // buckets: the top areas, written by the portal's bucket review (src/buckets.js).
-    discipline: { plan: { header: PLAN_HEADER }, staffing: { header: STAFFING_HEADER }, buckets: { header: BUCKET_HEADER }, "bucket-history": { header: HISTORY_HEADER } },
+    discipline: { plan: { header: PLAN_HEADER }, staffing: { header: STAFFING_HEADER }, buckets: { header: BUCKET_HEADER }, "bucket-history": { header: HISTORY_HEADER }, areas: { header: AREA_HEADER } },
     aggregate: {
       demand: { formula: importOf(sheets.projects, "demand", DEMAND_HEADER) },
       plan: { formula: importOf(sheets.discipline, "plan", PLAN_HEADER) },
@@ -66,6 +67,8 @@ export function liveLayout(sheets) {
       buckets: { formula: importOf(sheets.discipline, "buckets", BUCKET_HEADER) },
       // Where former buckets went, so older answers and plan rows follow them.
       "bucket-history": { formula: importOf(sheets.discipline, "bucket-history", HISTORY_HEADER) },
+      // The area list with its default buckets, support and examples, for the survey and the IC pages.
+      areas: { formula: importOf(sheets.discipline, "areas", AREA_HEADER) },
     },
   };
 }

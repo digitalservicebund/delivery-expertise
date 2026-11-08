@@ -5,7 +5,7 @@ import { bar, currentMode, loadConfig, DATA_TABS, SHEET_LABEL } from "./source.j
 import { token, hasToken, canEdit, readTabs, readHeader, replaceTabs, setUpTabs, withSheet, tabTitles, getForm, updateForm } from "./google.js";
 import { liveLayout } from "./sheets.js";
 import { FORM_INFO, formItems, formRequests, branchRequest, supplyFormula } from "./icform.js";
-import { AREA_NAMES, DEFAULT_BUCKETS, DEFAULT_BUCKET_AREAS, RETIRED_DEFAULT_AREAS } from "./areas.js";
+import { RETIRED_DEFAULT_AREAS, readAreas, seedAreaRows, areaIssues } from "./areas.js";
 import { formRows } from "./prefill.js";
 import { compareBuckets, bucketPrompt, parseBuckets, readBuckets, bucketRows, areasToGroup, pending, topAreas, nextHistory, aliasesOf, inferHistory, effectiveBuckets } from "./buckets.js";
 
@@ -36,12 +36,14 @@ function action(button, failure, run, out = status) {
 async function loadDummyData(config, t) {
   status.replaceChildren("Reading the staffing snapshot…");
   const id = config.sheets.discipline;
-  const { rows, absent } = await withSheet(config, t, id, SHEET_LABEL.discipline, () => readTabs(t, id, ["staffing"]));
+  const { rows, absent } = await withSheet(config, t, id, SHEET_LABEL.discipline, () => readTabs(t, id, ["staffing", "areas"]));
   if (absent.length || !rows.staffing.length) {
     throw new Error("The discipline sheet's staffing tab is empty: paste the ds-staffing snapshot into it first (see Set up live sheets).");
   }
   status.replaceChildren("Generating the dummy data…");
-  const data = generateDummyData(rows.staffing);
+  const data = generateDummyData(rows.staffing, readAreas(rows.areas));
+  // The prototype pages read the area list from the prototype sheet, like everything else in prototype mode.
+  data.areas = rows.areas.length ? rows.areas : seedAreaRows();
   status.replaceChildren("Writing to the prototype sheet…");
   await withSheet(config, t, config.sheets.prototype, SHEET_LABEL.prototype, () => replaceTabs(t, config.sheets.prototype, data));
   const total = Object.values(data).reduce((n, rows) => n + rows.length, 0);
@@ -57,6 +59,13 @@ async function responsesTab(config, t) {
   const tab = tabs.filter((name) => /^(Form responses|Formularantworten)/i.test(name)).sort((a, b) => number(b) - number(a))[0];
   if (!tab) throw new Error(`The IC responses sheet has no form responses tab (found: ${tabs.join(", ")}). Link the IC form to it first.`);
   return tab;
+}
+
+// The area list from the discipline sheet's areas tab (rows, and as readAreas gives it), the built-in one while empty.
+async function readCatalogue(config, t) {
+  const id = config.sheets.discipline;
+  const { rows } = await withSheet(config, t, id, SHEET_LABEL.discipline, () => readTabs(t, id, ["areas"]));
+  return { rows: rows.areas, catalogue: readAreas(rows.areas) };
 }
 
 // The policy domains, from the discipline plan's domain rows (project → domain): the IC form's domain grid.
@@ -77,10 +86,10 @@ async function readBucketTabs(config, t, sheet = "discipline") {
 // Retroactive bucket history: every bucket the IC form ever asked about is a column of its responses. Former ones
 // the history doesn't know yet are placed by their areas and added to the discipline sheet's bucket-history tab,
 // where they can be corrected by hand. Returns the added rows; reports in lines.
-async function recoverHistory(config, t, tab, buckets, history, lines) {
+async function recoverHistory(config, t, tab, buckets, history, catalogue, lines) {
   status.replaceChildren("Looking for former buckets in the IC responses…");
   const headers = await readHeader(t, config.sheets.icResponses, tab);
-  const { rows, unresolved } = inferHistory(headers, effectiveBuckets(buckets), history, { ...DEFAULT_BUCKET_AREAS, ...RETIRED_DEFAULT_AREAS }, new Date().toISOString());
+  const { rows, unresolved } = inferHistory(headers, effectiveBuckets(buckets, catalogue.defaultBucketAreas), history, { ...catalogue.defaultBucketAreas, ...RETIRED_DEFAULT_AREAS }, new Date().toISOString());
   if (rows.length) {
     const id = config.sheets.discipline;
     await withSheet(config, t, id, SHEET_LABEL.discipline, () => replaceTabs(t, id, { "bucket-history": [...history, ...rows] }));
@@ -96,14 +105,15 @@ async function recoverHistory(config, t, tab, buckets, history, lines) {
 async function setUpLiveSheets(config, t) {
   const layout = liveLayout(config.sheets);
   const { buckets, history } = await readBucketTabs(config, t);
-  const areas = topAreas(buckets, DEFAULT_BUCKETS);
+  const { rows: areaRows, catalogue } = await readCatalogue(config, t);
+  const areas = topAreas(buckets, catalogue.defaultBuckets);
   status.replaceChildren(`Finding the IC form's responses…`);
   const lines = [];
   // Without linked responses the rest is still worth setting up: supply just waits for a later run.
   try {
     const tab = await responsesTab(config, t);
     lines.push(`IC responses sheet: counting from the “${tab}” tab`);
-    const fullHistory = [...history, ...(await recoverHistory(config, t, tab, buckets, history, lines))];
+    const fullHistory = [...history, ...(await recoverHistory(config, t, tab, buckets, history, catalogue, lines))];
     layout.aggregate.supply = { formula: supplyFormula(config.sheets.icResponses, tab, areas, aliasesOf(fullHistory), await readDomains(config, t)) };
   } catch (err) {
     lines.push(`aggregate sheet, supply: skipped. ${err.message}`);
@@ -115,6 +125,13 @@ async function setUpLiveSheets(config, t) {
     const notes = await withSheet(config, t, id, SHEET_LABEL[sheet], () => setUpTabs(t, id, layout[sheet]));
     lines.push(...notes.map((n) => `${SHEET_LABEL[sheet]}, ${n}`));
   }
+  // The area list starts as the built-in one; after that the sheet is the source.
+  if (!areaRows.length) {
+    const id = config.sheets.discipline;
+    await withSheet(config, t, id, SHEET_LABEL.discipline, () => replaceTabs(t, id, { areas: seedAreaRows() }));
+    lines.push(`discipline sheet, areas: filled with the built-in list of ${seedAreaRows().length} areas. Edit it there from now on.`);
+  }
+  lines.push(...areaIssues(areaRows).map((issue) => `discipline sheet, areas: ${issue}`));
   // Google lets nobody approve an import through the API: it takes one click in each importing sheet.
   const link = (sheet) => Object.assign(document.createElement("a"), {
     href: `https://docs.google.com/spreadsheets/d/${config.sheets[sheet]}/edit`, target: "_blank", rel: "noopener", textContent: SHEET_LABEL[sheet],
@@ -129,7 +146,8 @@ async function setUpLiveSheets(config, t) {
 async function setUpIcForm(config, t) {
   const id = config.icFormId;
   status.replaceChildren("Reading the top areas…");
-  const areas = topAreas((await readBucketTabs(config, t)).buckets, DEFAULT_BUCKETS);
+  const { catalogue } = await readCatalogue(config, t);
+  const areas = topAreas((await readBucketTabs(config, t)).buckets, catalogue.defaultBuckets);
   const domains = await readDomains(config, t);
   status.replaceChildren("Reading the IC form…");
   const form = await withSheet(config, t, id, "IC form", () => getForm(t, id), "FORMS");
@@ -188,14 +206,14 @@ async function readDemand(config, t) {
 }
 
 async function showBuckets(config, t) {
-  const [{ buckets: current, history }, demand] = await Promise.all([readBucketTabs(config, t, bucketSheet()), readDemand(config, t)]);
-  const areas = areasToGroup(demand, current, AREA_NAMES);
+  const [{ buckets: current, history }, demand, { catalogue }] = await Promise.all([readBucketTabs(config, t, bucketSheet()), readDemand(config, t), readCatalogue(config, t)]);
+  const areas = areasToGroup(demand, current, catalogue.names);
   bucketState = { current, history, demand, areas };
   const { ungrouped, stale, empty } = pending(current, areas);
   const prompt = document.getElementById("buckets-prompt");
   prompt.hidden = !(empty || ungrouped.length || stale);
   prompt.textContent = empty
-    ? `No buckets yet: the IC form asks about the ${DEFAULT_BUCKETS.length} default buckets. Ask Gemini to group all ${areas.length} areas.`
+    ? `No buckets yet: the IC form asks about the ${catalogue.defaultBuckets.length} default buckets. Ask Gemini to group all ${areas.length} areas.`
     : ungrouped.length
       ? `${ungrouped.length} area${ungrouped.length > 1 ? "s aren't" : " isn't"} in a bucket yet: ${ungrouped.join(", ")}. Ask Gemini to regroup.`
       : "The grouping is more than a quarter old. Ask Gemini to regroup, to see whether it still fits.";

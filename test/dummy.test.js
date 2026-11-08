@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { parseCsv } from "../src/csv.js";
 import { generateDummyData } from "../src/dummy.js";
 import { STAFFING_HEADER } from "../src/teams.js";
-import { AREA_NAMES } from "../src/areas.js";
+import { AREA_NAMES, readAreas } from "../src/areas.js";
 
 // A snapshot as ds-staffing exports it: byte-order mark, semicolons, several roles in one quoted field.
 const line = (email, first, level, engagement, team, department, status) =>
@@ -54,4 +54,15 @@ test("teams also answer for areas they added themselves, with what they need the
   // People on those teams rate themselves in them too, so a grouping changes supply as well as demand.
   const rated = new Set(tabs["expertise-assessments"].map((r) => r.expertise));
   assert.ok(custom.some((r) => rated.has(r.expertise)));
+});
+
+test("the dummy data uses the area list from the discipline sheet when there is one", () => {
+  const catalogue = readAreas([
+    { area: "Backend development", default_bucket: "Build", support: "cop" },
+    { area: "Frontend development", default_bucket: "Build", support: "cop" },
+    { area: "Rust", default_bucket: "Systems", support: "" },
+  ]);
+  const suggested = generateDummyData(parseCsv(snapshot, ";"), catalogue)["project-demand"].map((r) => r.expertise).filter((e) => AREA_NAMES.includes(e) || e === "Rust");
+  assert.ok(suggested.length > 0);
+  assert.ok(suggested.every((e) => catalogue.names.includes(e)), "only areas in the sheet's list");
 });

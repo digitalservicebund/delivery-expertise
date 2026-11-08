@@ -68,3 +68,42 @@ export const RETIRED_DEFAULT_AREAS = {
   Security: ["Application security", "Identity & access"],
   "Compliance & Privacy": ["Data protection", "IT security compliance"],
 };
+
+// The list lives in the discipline sheet's areas tab, editable by discipline heads; the lists above only seed it
+// (Set up live sheets) and stand in while it is empty. Imported into the aggregate sheet for everyone else.
+export const AREA_HEADER = ["area", "default_bucket", "support", "operative", "conceptual", "strategic", "comprehensive"];
+const SUPPORT_TEXT = Object.fromEntries(Object.entries(SUPPORT_KEY).map(([text, key]) => [key, text]));
+const EXAMPLE_COLUMNS = AREA_HEADER.slice(3);
+
+// One row per area, bucket by bucket, in the default buckets' order.
+export function seedAreaRows() {
+  return Object.entries(DEFAULT_BUCKET_AREAS).flatMap(([bucket, names]) => names.map((name) => {
+    const [, support, examples] = AREAS.find(([n]) => n === name);
+    return { area: name, default_bucket: bucket, support: SUPPORT_KEY[support], ...Object.fromEntries(EXAMPLE_COLUMNS.map((c, i) => [c, examples[i]])) };
+  }));
+}
+
+// The areas tab as the pages use it: areas ([name, support, examples], as AREAS), their names, the default buckets
+// in order and the areas each covers. An empty tab gives the built-in list.
+export function readAreas(rows) {
+  const given = rows.filter((r) => r.area?.trim());
+  const list = given.length ? given : seedAreaRows();
+  const defaultBucketAreas = {};
+  for (const r of list) if (r.default_bucket) (defaultBucketAreas[r.default_bucket] ??= []).push(r.area);
+  return {
+    areas: list.map((r) => [r.area, SUPPORT_TEXT[r.support] ?? COP, EXAMPLE_COLUMNS.map((c) => r[c] ?? "")]),
+    names: list.map((r) => r.area),
+    defaultBuckets: Object.keys(defaultBucketAreas),
+    defaultBucketAreas,
+  };
+}
+
+// What Set up live sheets reports about an edited areas tab.
+export function areaIssues(rows) {
+  const { defaultBuckets } = readAreas(rows);
+  const issues = [];
+  if (defaultBuckets.length !== 10) issues.push(`${defaultBuckets.length} default bucket${defaultBuckets.length === 1 ? "" : "s"}: exactly 10, please`);
+  const without = rows.filter((r) => r.area?.trim() && !r.default_bucket?.trim()).map((r) => r.area);
+  if (without.length) issues.push(`No default bucket: ${without.join(", ")}`);
+  return issues;
+}

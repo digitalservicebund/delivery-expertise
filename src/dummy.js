@@ -3,7 +3,7 @@
 // people are R001, R002, … Runs in the browser (the portal) and in Node (scripts/generate-data.js).
 // Deterministic (seeded) so regenerating from the same snapshot produces identical data.
 import { assessedCoverage, PEOPLE, TECH_LEAD, BOOKABLE_DAYS_PER_QUARTER } from "./model.js";
-import { AREAS, SUPPORT_KEY } from "./areas.js";
+import { SUPPORT_KEY, readAreas } from "./areas.js";
 
 const QUARTERS = ["2026-Q1", "2026-Q2", "2026-Q3", "2026-Q4"];
 const COMPLETED = QUARTERS.slice(0, -1); // activity is only recorded for finished quarters
@@ -110,7 +110,11 @@ const keyed = (key) => (key.startsWith("Domain:") ? { expertise: "Domain experti
 
 // rows: the snapshot's rows (Engagement Type, Level, Engagement, Team, Department, Status; other columns ignored).
 // Returns the dummy data's tabs: name -> rows.
-export function generateDummyData(rows) {
+// catalogue: the area list (readAreas of the discipline sheet's areas tab); the built-in one by default. Areas it
+// has that the tables above don't know get a modest prevalence and no trend.
+export function generateDummyData(rows, catalogue = readAreas([])) {
+  const known = new Set(catalogue.names);
+  const prevalence = (area) => EXPERTISE[area]?.prevalence ?? 0.08;
   rng = seeded();
   // Only the engineering discipline counts, sub-departments included ("Engineering / Platform"). Anyone else in
   // the export, such as design or product, holds no position here.
@@ -131,7 +135,7 @@ export function generateDummyData(rows) {
   staffing.forEach((row, i) => {
     const name = `${row.Engagement} / ${row.Team}`;
     if (!teams.has(name)) {
-      const expertise = affinity(name);
+      const expertise = affinity(name).filter((e) => known.has(e));
       const domain = domainOf(row.Engagement);
       // A team's domain counts as one of its areas of expertise, right after its primary one.
       if (domain) expertise.splice(1, 0, `Domain:${domain}`);
@@ -171,7 +175,7 @@ export function generateDummyData(rows) {
 
   // Each engineer has a personal profile: 2-5 focus areas at varied levels plus a few basic ratings.
   // Self-assessments trickle in over the year (some never), peers verify later, some people re-assess.
-  const ALL_EXPERTISE = Object.keys(EXPERTISE);
+  const ALL_EXPERTISE = catalogue.names;
   const weightedPick = (options) => {
     const total = options.reduce((s, [, w]) => s + w, 0);
     let r = rng() * total;
@@ -184,8 +188,9 @@ export function generateDummyData(rows) {
     const focus = [];
     // Usually one or two of the team's core areas, the rest from personal interest.
     for (const e of team.expertise.slice(0, 1 + Math.floor(rng() * 2))) if (rng() < 0.8) focus.push(e);
-    while (focus.length < focusCount) {
-      const e = weightedPick(ALL_EXPERTISE.filter((x) => !focus.includes(x)).map((x) => [x, EXPERTISE[x].prevalence]));
+    // A short area list may run out before the count does.
+    for (let pool = ALL_EXPERTISE.filter((x) => !focus.includes(x)); focus.length < focusCount && pool.length; pool = pool.filter((x) => !focus.includes(x))) {
+      const e = weightedPick(pool.map((x) => [x, prevalence(x)]));
       focus.push(e);
     }
     const skills = new Map();
@@ -248,7 +253,7 @@ export function generateDummyData(rows) {
   const METHODS = ["operative", "conceptual", "strategic", "comprehensive"]; // levels 3-6
   // Support a team can also draw on, in addition to its own people: the platform team, the legal and IT security
   // team, or the community of practice. Written as a key per row where the team ticked it.
-  const SUPPORT = Object.fromEntries(AREAS.map(([name, support]) => [name, SUPPORT_KEY[support]]));
+  const SUPPORT = Object.fromEntries(catalogue.areas.map(([name, support]) => [name, SUPPORT_KEY[support]]));
   const supportFor = (expertise) => (expertise.startsWith("Domain:") ? null : SUPPORT[expertise] ?? "cop");
   // Headcount answers are whole people; a need too small to count as a person is left out.
   const peopleAnswer = (x) => (x < 0.4 ? null : x < 1.5 ? "1" : x < 2.5 ? "2" : x < 4 ? "3" : "5");
