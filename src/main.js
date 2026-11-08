@@ -1,4 +1,6 @@
-import { load } from "./source.js";
+import { load, currentMode } from "./source.js";
+import { restoreAssessment } from "./selfassessment.js";
+import { ratingsToProfile } from "./prefill.js";
 import { inBuckets } from "./buckets.js";
 import { personaView, SIGNAL } from "./persona.js";
 import { buildModel, change, LEVELS, METHOD_NAME, personalRatings, reconciledStatus, DOMAIN } from "./model.js";
@@ -16,6 +18,8 @@ const SEVERITY = ["short", "strained", "fragile", "overqualified", "surplus", "c
 const HTML = new Set(["table", "thead", "tbody", "tr", "td", "th", "h2", "p", "ul", "li", "i", "strong", "button", "span", "h3"]);
 const forYou = document.getElementById("for-you");
 const personaSwitch = document.getElementById("personas");
+// The persona key of an engineer's own view (?view=me), drawn from their answers on the IC page.
+const OWN = "me";
 
 const svg = document.getElementById("chart");
 const detail = document.getElementById("detail");
@@ -848,9 +852,12 @@ function update() {
 // The individual view: always discipline-wide, so no team or colleague can be singled out.
 function updateIndividual(persona) {
   const model = modelFor("");
-  const you = personaView(model, personalRatings(data.assessments, persona.key, model.quarters.at(-1)));
+  const ratings = persona.key === OWN ? ratingsToProfile(saved.ratings) : personalRatings(data.assessments, persona.key, model.quarters.at(-1));
+  const you = personaView(model, ratings);
   const selected = [...model.expertise, ...model.roles].find((e) => e.name === state.selected) ?? null;
-  document.getElementById("progress").textContent = `Viewing as ${persona.label}: your ratings against demand across the whole discipline`;
+  document.getElementById("progress").textContent = persona.key === OWN
+    ? "Your answers against demand across the whole discipline"
+    : `Viewing as ${persona.label}: your ratings against demand across the whole discipline`;
   renderForYou(you);
   renderDetail(model, selected, true);
   redraw = () => renderChart(model, selected, you);
@@ -879,24 +886,41 @@ svg.addEventListener("click", () => state.selected && select(null));
 let redraw = () => {};
 new ResizeObserver(() => redraw()).observe(svg);
 
+// ?view=me: an engineer's own view, from the answers they gave on the IC page and keep in this browser. Discipline-
+// wide only, with no projects, teams or personas, and no staffing, which only discipline heads can open live.
+const ownView = new URLSearchParams(location.search).get("view") === "me";
+const saved = ownView ? restoreAssessment() : null;
+if (ownView && !saved.submitted) location.replace("ic.html");
+
 try {
+  if (ownView) {
+    personaSwitch.remove(); // hidden alone loses to its display rule in style.css
+    document.getElementById("own-links").hidden = false;
+  }
   // Supply is counted per bucket, so demand is mapped to the same buckets. Live supply comes per bucket already;
   // prototype ratings and activity are per area and get mapped too. Without a buckets tab nothing changes.
-  const { data: sets, mode } = await load([...Object.values(SOURCES), "buckets"]);
-  const loaded = Object.fromEntries(Object.entries(SOURCES).map(([k, name]) => [k, sets[name]]));
+  const live = (await currentMode()) === "live";
+  const names = Object.values(SOURCES).filter((n) => !(ownView && live && ["staffing", "historical-activity"].includes(n)));
+  const { data: sets, mode } = await load([...names, "buckets"]);
+  const loaded = Object.fromEntries(Object.entries(SOURCES).map(([k, name]) => [k, sets[name] ?? []]));
   const { demand, plan, assessments, activity } = loaded;
   Object.assign(loaded, inBuckets(mode === "live" ? { demand, plan } : { demand, plan, assessments, activity }, sets.buckets ?? []));
-  // Everything is drawn per person and team: without staffing there is nothing to draw.
-  if (!loaded.staffing.length) {
+  // Everything is drawn per person and team: without staffing there is nothing to draw. The own view needs none.
+  if (!ownView && !loaded.staffing.length) {
     throw new Error(mode === "live" ? "The discipline sheet's staffing tab is empty: paste the ds-staffing snapshot into it." : "No staffing data.");
   }
   if (!loaded.demand.length) throw new Error("No project has answered the survey yet.");
   data = loaded;
-  // Live ratings are anonymous counts, so there is nobody to view as: the individual view stays out.
-  personas = mode === "live" ? [{ key: "head", label: "Discipline head" }] : pickPersonas(loaded);
-  // ?view=ic opens as an engineer, so the portal can link straight to the individual view.
-  if (new URLSearchParams(location.search).get("view") === "ic") state.persona = personas[1]?.key ?? "head";
-  populateScopes(loaded.staffing);
+  if (ownView) {
+    personas = [{ key: OWN, label: "You" }];
+    state.persona = OWN;
+  } else {
+    // Live ratings are anonymous counts, so there is nobody to view as: the individual view stays out.
+    personas = mode === "live" ? [{ key: "head", label: "Discipline head" }] : pickPersonas(loaded);
+    // ?view=ic opens as an example engineer, for discipline heads to see what engineers see.
+    if (new URLSearchParams(location.search).get("view") === "ic") state.persona = personas[1]?.key ?? "head";
+    populateScopes(loaded.staffing);
+  }
   update();
   document.getElementById("quarter").textContent = modelFor("").quarters.at(-1);
 } catch (err) {
