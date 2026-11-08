@@ -1,8 +1,8 @@
-// The portal: shows the data mode, and offers two set-up actions to whoever has edit access to the sheets:
-// fill the prototype sheet with the generated dummy data, and set up the live sheets' tabs and imports.
-import { parseCsv } from "./csv.js";
+// The portal: shows the data mode, and offers discipline heads the set-up actions: fill the prototype sheet with
+// dummy data, set up the live sheets' tabs and imports, and set up the IC form.
+import { generateDummyData } from "./dummy.js";
 import { bar, currentMode, loadConfig, DATA_TABS, SHEET_LABEL } from "./source.js";
-import { token, replaceTabs, setUpTabs, withSheet, tabTitles, getForm, updateForm } from "./google.js";
+import { token, hasToken, canEdit, readTabs, replaceTabs, setUpTabs, withSheet, tabTitles, getForm, updateForm } from "./google.js";
 import { liveLayout } from "./sheets.js";
 import { FORM_INFO, formItems, formRequests, branchRequest, supplyFormula } from "./icform.js";
 import { AREA_NAMES } from "./areas.js";
@@ -29,14 +29,17 @@ function action(button, failure, run) {
   });
 }
 
+// Generates the dummy data in the browser from the staffing snapshot in the discipline sheet, and writes it to the
+// prototype sheet. Only team structure and levels are used: names and emails never leave the discipline sheet.
 async function loadDummyData(config, t) {
-  status.replaceChildren("Reading the generated data…");
-  const data = {};
-  for (const name of DATA_TABS) {
-    const res = await fetch(`data/${name}.csv`);
-    if (!res.ok) throw new Error(`data/${name}.csv is missing. Run npm run data.`);
-    data[name] = parseCsv(await res.text());
+  status.replaceChildren("Reading the staffing snapshot…");
+  const id = config.sheets.discipline;
+  const { rows, absent } = await withSheet(config, t, id, SHEET_LABEL.discipline, () => readTabs(t, id, ["staffing"]));
+  if (absent.length || !rows.staffing.length) {
+    throw new Error("The discipline sheet's staffing tab is empty: paste the ds-staffing snapshot into it first (see Set up live sheets).");
   }
+  status.replaceChildren("Generating the dummy data…");
+  const data = generateDummyData(rows.staffing);
   status.replaceChildren("Writing to the prototype sheet…");
   await withSheet(config, t, config.sheets.prototype, SHEET_LABEL.prototype, () => replaceTabs(t, config.sheets.prototype, data));
   const total = Object.values(data).reduce((n, rows) => n + rows.length, 0);
@@ -113,10 +116,39 @@ async function setUpIcForm(config, t) {
     ": restrict responses to DigitalService, allow response editing, and link responses to the IC responses sheet. Then run Set up live sheets for the supply counts.");
 }
 
-if (mode !== "files") {
-  panel.hidden = false;
-  const [dummy, live, form] = panel.querySelectorAll("button");
-  action(dummy, "Could not load the dummy data.", loadDummyData);
-  action(live, "Could not set up the live sheets.", setUpLiveSheets);
-  action(form, "Could not set up the IC form.", setUpIcForm);
+// The set-up panel is for discipline heads only: whoever may edit the discipline sheet, as Google says. That is
+// its owner and anyone it's shared with for editing, with no list to keep. Everyone else sees only the prototypes.
+// The sheets' own sharing still decides what any action may do; this only keeps the buttons out of the way.
+const access = document.getElementById("head-access");
+const accessNote = access.querySelector("output");
+const [dummy, live, form] = panel.querySelectorAll("button");
+action(dummy, "Could not load the dummy data.", loadDummyData);
+action(live, "Could not set up the live sheets.", setUpLiveSheets);
+action(form, "Could not set up the IC form.", setUpIcForm);
+
+const isHead = async (config, t, { ask }) => {
+  const id = config.sheets.discipline;
+  const check = () => canEdit(t, id);
+  // Asking opens the Picker once if the sheet hasn't been handed to the app yet. Silent checks never do.
+  return ask ? withSheet(config, t, id, SHEET_LABEL.discipline, check) : check().catch(() => false);
+};
+const showPanel = () => ((panel.hidden = false), (access.hidden = true));
+
+if (mode !== "unconfigured") {
+  access.hidden = false;
+  const config = await loadConfig();
+  // Already signed in this session: check quietly, without any popup.
+  if (hasToken() && (await isHead(config, await token(config.clientId), { ask: false }))) showPanel();
+  access.querySelector("button").addEventListener("click", async () => {
+    accessNote.textContent = "";
+    try {
+      if (await isHead(config, await token(config.clientId), { ask: true })) return showPanel();
+      accessNote.textContent = "You can view the discipline sheet but not edit it, so the set-up isn't available to you.";
+    } catch (err) {
+      // No access looks like "not found" to the app; anything else is a real error worth showing.
+      accessNote.textContent = err.status === 404
+        ? "Only discipline heads, who can edit the discipline sheet, can set up the sheets."
+        : `Couldn't check your access to the discipline sheet. Google said: ${err.message}`;
+    }
+  });
 }

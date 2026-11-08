@@ -15,16 +15,16 @@ The prototypes store everything in Google Sheets and a Google Form. There is no 
 
 Every page reads through one loader, `src/source.js`, and shows a bar at the top saying which data it shows, with a switch and a Google sign-in button when needed.
 
-- **Prototype** (the default) reads the prototype sheet. It has one tab per generated CSV, named like the file without `.csv`: `staffing`, `discipline-plan`, `project-demand`, `historical-activity`, `expertise-assessments`. Fill or refresh it with **Load dummy data** on the portal, which writes `data/*.csv` into it with your own access. Survey pages write nothing.
+- **Prototype** (the default) reads the prototype sheet. It has one tab per generated CSV, named like the file without `.csv`: `staffing`, `discipline-plan`, `project-demand`, `historical-activity`, `expertise-assessments`. Fill or refresh it with **Load dummy data** on the portal, which generates the dummy data in the browser from the discipline sheet's `staffing` snapshot and writes it with your own access. Survey pages write nothing.
 - **Live** reads `demand`, `plan` and `supply` from the aggregate sheet. The survey adds the projects sheet's `teams` list. The discipline view adds the discipline sheet's `staffing` snapshot, which only discipline heads can open (`src/live.js` turns both into the dummy data's shapes):
   - **Staffing:** active engineers only, each once, in the team with their largest assignment, with names and emails dropped. One quarter only, with no people leads.
   - **Supply:** the anonymous counts become ratings that belong to no team. They count for the whole discipline, but a project or team filter leaves them out, so filtered views rest on what the leads reported.
   - **Not available:** booked time, so there are no suggestions from it. The individual view, because nobody's own ratings are known.
-- **Local files**: without a `config.js`, as in a fresh clone, pages read `data/*.csv` directly and need no sign-in.
+- **Not set up**: without a `config.js`, as in a fresh clone, pages say so and show nothing.
 
 `?mode=live` or `?mode=prototype` switches, and the choice holds for the browser tab's session. The access token is also kept for the tab's session only, so moving between pages doesn't ask again. It expires within the hour.
 
-The dummy data is generated from `teams.csv`, the real, anonymised staffing. Project and team names are real, so share the prototype sheet no more widely than the Pages site, never publicly or by link.
+The dummy data is generated from the ds-staffing snapshot in the discipline sheet. Names and emails stay there, but project and team names are real, so share the prototype sheet no more widely than the Pages site, never publicly or by link.
 
 The IDs live in `public/config.js`, which is git-ignored. On deploy it is written from the `SHEETS_CONFIG` repository secret by `scripts/write-config.js`. The secret holds the JSON shape in `public/config.example.js`. Its master copy, and the OAuth credentials JSON with its client secret, are in 1Password. The client secret is never used and never goes into the config.
 
@@ -41,6 +41,8 @@ Two scopes: `userinfo.email`, so the survey knows who is answering, and `drive.f
 The Picker needs an API key (`pickerKey` in the config). It identifies the project and grants no access. Restrict it to **Websites** `http://localhost:8000/*` and `https://digitalservicebund.github.io/delivery-expertise/*`, and to the **Google Picker API** only. The Picker's app ID is the project number, taken from the start of the client ID.
 
 ## Setting up the sheets
+
+The portal's set-up panel (**Load dummy data**, **Set up live sheets**, **Set up IC form**) is shown only to discipline heads: whoever Google says may edit the discipline sheet, which is its owner and anyone it's shared with for editing. There is no list to maintain. A discipline head clicks **Sign in to set up the sheets** once. The first time, the Picker asks for the discipline sheet, and after that the check runs quietly on every visit. Hiding the panel is a convenience: what each action may do is still decided by the sheets' own sharing.
 
 The portal's **Set up live sheets** button does the next three sections' tab work for you: it creates the `demand` and `plan` tabs with their header rows, and the aggregate sheet's `demand` and `plan` tabs with their imports. It is safe to run again. It only adds a header to an empty row 1, and leaves a different existing header alone, saying so. Google allows no one to approve an `IMPORTRANGE` through the API, so afterwards open the aggregate sheet and click **Allow access** once per source sheet. It also writes the aggregate `supply` tab, once the IC form is linked to the IC responses sheet. Until then it skips `supply` and says so.
 

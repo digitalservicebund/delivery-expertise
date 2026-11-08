@@ -1,5 +1,7 @@
-// Minimal RFC 4180 CSV handling: quoted fields, escaped quotes, CRLF.
-export function parseCsv(text) {
+// Minimal RFC 4180 CSV handling: quoted fields, escaped quotes, CRLF. A leading byte-order mark is skipped, and the
+// separator can be a semicolon, as in the ds-staffing exports.
+export function parseCsv(input, separator = ",") {
+  const text = input.replace(/^﻿/, "");
   const rows = [];
   let row = [];
   let field = "";
@@ -11,7 +13,7 @@ export function parseCsv(text) {
       else if (c === '"') quoted = false;
       else field += c;
     } else if (c === '"') quoted = true;
-    else if (c === ",") (row.push(field), (field = ""));
+    else if (c === separator) (row.push(field), (field = ""));
     else if (c === "\n" || c === "\r") {
       if (c === "\r" && text[i + 1] === "\n") i++;
       row.push(field);

@@ -23,17 +23,8 @@ jobs:
         with:
           node-version: lts/*
       - run: npm test
-      # The real staffing seed never lives in the repo. It comes from the
-      # TEAMS_CSV secret (base64, master copy in 1Password) and the dummy
-      # data is generated from it on every deploy.
-      - name: Generate data
-        env:
-          TEAMS_CSV: ${{ secrets.TEAMS_CSV }}
-        run: |
-          [ -n "$TEAMS_CSV" ] || { echo "::error::TEAMS_CSV secret missing"; exit 1; }
-          printf '%s' "$TEAMS_CSV" | base64 -d > teams.csv
-          npm run data
-          rm teams.csv
+      # No data is published: every page reads Google Sheets, and the dummy
+      # data is generated in the browser into the prototype sheet.
       # OAuth client ID, sheet IDs and the IC form URL, as JSON in the SHEETS_CONFIG
       # secret (master copy in 1Password). Never the OAuth client secret.
       - name: Write config
@@ -49,7 +40,7 @@ jobs:
           [[ "$PAGES_PATH" =~ ^[A-Za-z0-9_-]{16,}$ ]] || { echo "::error::PAGES_PATH secret missing or too short"; exit 1; }
           mkdir -p "_site/$PAGES_PATH"
           cp -r public/. "_site/$PAGES_PATH/"
-          cp -r src data "_site/$PAGES_PATH/"
+          cp -r src "_site/$PAGES_PATH/"
       - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:

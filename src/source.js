@@ -1,9 +1,8 @@
 // Where every page gets its data from, and the bar that says so.
 //   prototype: the prototype sheet, filled with dummy data from the portal. The default.
 //   live:      the real sheets. Only what exists live is returned; the rest comes back empty and listed as missing.
-//   files:     data/*.csv beside the pages. Used automatically when there is no config.js, e.g. a fresh clone.
+//   unconfigured: no config.js, e.g. a fresh clone. Pages say so and show nothing.
 // ?mode=live or ?mode=prototype switches, and the choice is kept for the browser tab's session.
-import { parseCsv } from "./csv.js";
 import { token, hasToken, readTabs, withSheet } from "./google.js";
 import { latestSubmissions } from "./sheets.js";
 import { staffingFromSnapshot, assessmentsFromSupply, quarterOf } from "./live.js";
@@ -22,7 +21,7 @@ const LIVE = {
   teams: ["projects", "teams"],
 };
 const MODE_KEY = "data-mode";
-const LABEL = { prototype: "Prototype data", live: "Live data", files: "Local dummy files" };
+const LABEL = { prototype: "Prototype data", live: "Live data", unconfigured: "Not set up" };
 
 export async function loadConfig() {
   try {
@@ -43,7 +42,7 @@ function chosenMode() {
 }
 
 export async function currentMode() {
-  return (await loadConfig()) ? chosenMode() : "files";
+  return (await loadConfig()) ? chosenMode() : "unconfigured";
 }
 
 // The bar at the top of every page: which data is shown, a switch, and sign-in when needed.
@@ -59,7 +58,7 @@ export function bar(mode) {
   el.setAttribute("role", "status");
   const label = Object.assign(document.createElement("strong"), { textContent: LABEL[mode] });
   el.append(label);
-  if (mode !== "files") {
+  if (mode !== "unconfigured") {
     const other = mode === "live" ? "prototype" : "live";
     const link = Object.assign(document.createElement("a"), { href: `?mode=${other}`, textContent: `Switch to ${LABEL[other].toLowerCase()}` });
     el.append(" · ", link);
@@ -84,15 +83,6 @@ function signIn(clientId, ui) {
 export const SHEET_LABEL = { prototype: "prototype data sheet", aggregate: "aggregate sheet", projects: "projects sheet", discipline: "discipline sheet", icResponses: "IC responses sheet" };
 const readSheet = (config, t, sheet, tabs) =>
   withSheet(config, t, config.sheets[sheet], SHEET_LABEL[sheet], () => readTabs(t, config.sheets[sheet], tabs));
-
-async function fromFiles(names) {
-  const read = async (n) => {
-    const res = await fetch(`data/${n}.csv`);
-    if (!res.ok) throw new Error(`data/${n}.csv: ${res.status}. Run npm run data.`);
-    return [n, parseCsv(await res.text())];
-  };
-  return Object.fromEntries(await Promise.all(names.map(read)));
-}
 
 async function fromLive(t, config, names) {
   const data = Object.fromEntries(names.map((n) => [n, []]));
@@ -125,9 +115,12 @@ function fromLiveShapes(data) {
 // and can report in the bar's status.
 export async function load(names) {
   const config = await loadConfig();
-  const mode = config ? chosenMode() : "files";
+  const mode = config ? chosenMode() : "unconfigured";
   const ui = bar(mode);
-  if (mode === "files") return { data: await fromFiles(names), missing: [], mode, status: ui.status };
+  if (!config) {
+    ui.status.textContent = "Copy public/config.example.js to public/config.js and fill it in from 1Password.";
+    throw new Error("No config.js: the pages need the Google sheets to show anything.");
+  }
   const t = await signIn(config.clientId, ui);
   ui.status.textContent = "Loading…";
   const session = { mode, config, token: t, status: ui.status };

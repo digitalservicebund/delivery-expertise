@@ -127,6 +127,13 @@ export async function appendRows(accessToken, sheetId, tab, header, rows) {
   });
 }
 
+// Whether the signed-in person may edit a file. Throws a 404 ApiError when the file hasn't been handed to the
+// app in the Picker yet, or the person has no access at all: drive.file can't tell those apart.
+export async function canEdit(accessToken, fileId) {
+  const { capabilities } = await call(accessToken, `https://www.googleapis.com/drive/v3/files/${fileId}?fields=capabilities(canEdit)&supportsAllDrives=true`);
+  return Boolean(capabilities?.canEdit);
+}
+
 // Google Forms: read a form, and apply batches of changes to it. Same drive.file scope: the form must have
 // been handed over in the Picker.
 const FORMS_API = "https://forms.googleapis.com/v1/forms";

@@ -16,7 +16,6 @@
   },
   "type": "module",
   "scripts": {
-    "data": "node scripts/generate-data.js",
     "test": "node --test",
     "start": "node scripts/serve.js"
   }

@@ -32,6 +32,8 @@
     #sheet-setup button:disabled { opacity: 0.6; cursor: wait; }
     #sheet-setup output { display: block; margin-top: 0.5rem; }
     #sheet-setup output ul { margin: 0.25rem 0; padding-left: 1.25rem; }
+    #head-access button.link { font: inherit; background: none; border: 0; padding: 0; color: var(--accent); text-decoration: underline; cursor: pointer; }
+    #head-access output { display: block; }
   </style>
   <script type="module" src="src/portal.js"></script>
 </head>
@@ -93,9 +95,13 @@
       </div>
     </section>
 
+    <p id="head-access" class="muted" hidden>
+      Discipline head? <button type="button" class="link">Sign in to set up the sheets</button>
+      <output aria-live="polite"></output>
+    </p>
     <section id="sheet-setup" aria-labelledby="setup-heading" hidden>
       <h2 id="setup-heading">Sheets</h2>
-      <p class="muted"><strong>Load dummy data</strong> replaces the prototype sheet's contents with freshly generated data. <strong>Set up live sheets</strong> adds the tabs, header rows and imports the live sheets need. It never removes or overwrites answers. <strong>Set up IC form</strong> sets the self-assessment form's questions to the current top areas, keeping existing questions so their answers stay in the same columns. All need edit access.</p>
+      <p class="muted"><strong>Load dummy data</strong> generates dummy data from the staffing snapshot in the discipline sheet and replaces the prototype sheet's contents with it. <strong>Set up live sheets</strong> adds the tabs, header rows and imports the live sheets need. It never removes or overwrites answers. <strong>Set up IC form</strong> sets the self-assessment form's questions to the current top areas, keeping existing questions so their answers stay in the same columns. All need edit access.</p>
       <div class="actions">
         <button type="button">Load dummy data</button>
         <button type="button">Set up live sheets</button>

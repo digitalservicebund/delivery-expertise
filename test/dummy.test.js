@@ -1,0 +1,46 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { parseCsv } from "../src/csv.js";
+import { generateDummyData } from "../src/dummy.js";
+import { STAFFING_HEADER } from "../src/teams.js";
+
+// A snapshot as ds-staffing exports it: byte-order mark, semicolons, several roles in one quoted field.
+const line = (email, first, level, engagement, team, department, status) =>
+  [email, first, "Doe", "Senior", level, "1", "Internal", "Project", "", engagement, team, department, '"Tech Lead;Expert"', "100", status].join(";");
+const snapshot = "﻿" + [
+  STAFFING_HEADER.join(";"),
+  line("ada@ds.de", "Ada", "5", "Alpha", "Search", "Engineering", "Active"),
+  line("bob@ds.de", "Bob", "4", "Alpha", "Search", "Engineering", "Active"),
+  line("cy@ds.de", "Cy", "3", "Alpha", "Intake", "Engineering / Platform", "Active"),
+  line("dee@ds.de", "Dee", "6", "Beta", "Core", "Engineering", "Active"),
+  line("eve@ds.de", "Eve", "4", "Beta", "Core", "Design", "Active"),
+  line("fay@ds.de", "Fay", "4", "Beta", "Core", "Engineering", "Proposed"),
+].join("\r\n") + "\r\n";
+
+test("dummy data comes from active engineers in the snapshot, without their names or emails", () => {
+  const tabs = generateDummyData(parseCsv(snapshot, ";"));
+  assert.deepEqual(Object.keys(tabs).sort(), ["discipline-plan", "expertise-assessments", "historical-activity", "project-demand", "staffing"]);
+  const latest = tabs.staffing.filter((r) => r.quarter === "2026-Q4");
+  assert.equal(latest.length, 4); // design and proposed staffing left out
+  assert.ok(latest.every((r) => /^R\d{3}$/.test(r.person)));
+  const all = JSON.stringify(tabs);
+  for (const secret of ["@ds.de", "Ada", "Doe", "Eve"]) assert.ok(!all.includes(secret), secret);
+});
+
+test("someone on several teams is one person, in the team with their largest assignment", () => {
+  const split = snapshot.replace(line("ada@ds.de", "Ada", "5", "Alpha", "Search", "Engineering", "Active"), [
+    line("ada@ds.de", "Ada", "5", "Alpha", "Search", "Engineering", "Active").replace(";100;", ";30;"),
+    line("ada@ds.de", "Ada", "5", "Beta", "Core", "Engineering", "Active").replace(";100;", ";70;"),
+  ].join("\r\n"));
+  const latest = generateDummyData(parseCsv(split, ";")).staffing.filter((r) => r.quarter === "2026-Q4");
+  assert.equal(latest.length, 4);
+  assert.equal(latest.filter((r) => r.level === 5).length, 1);
+});
+
+test("the same snapshot always gives the same dummy data", () => {
+  assert.deepEqual(generateDummyData(parseCsv(snapshot, ";")), generateDummyData(parseCsv(snapshot, ";")));
+});
+
+test("a snapshot without active engineers is refused", () => {
+  assert.throws(() => generateDummyData([]), /no active Engineering rows/);
+});

@@ -1,5 +1,6 @@
 node_modules
 dist
 teams*.csv
+staffing-snapshot*.csv
 data/
 public/config.js

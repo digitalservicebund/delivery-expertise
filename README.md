@@ -3,26 +3,21 @@
 Collating and visualising project demand matched against current delivery capabilities.
 
 ```sh
-npm run data   # generates the dummy data in data/ from teams.csv (needed once before npm start)
 npm start      # serves on http://localhost:8000: a portal linking every prototype by use case
 npm test
 ```
 
-`teams.csv` and `data/` are git-ignored and must never be committed. Get `teams.csv` from 1Password and put it in the repo root before running `npm run data`.
+All data lives in Google Sheets and a Google Form, read and written in the browser with each person's own Google account. Setup and sharing: [docs/google-setup.md](docs/google-setup.md). The IDs go in the git-ignored `public/config.js` (copy `public/config.example.js`; values in 1Password).
 
-The pages live in `public/` and load `src/` and `data/` beside them. Every push to `main` deploys to GitHub Pages via `.github/workflows/pages.yml`. The workflow decodes `teams.csv` from the `TEAMS_CSV` repository secret (base64), generates `data/`, and publishes everything under the unguessable folder in the `PAGES_PATH` secret. Both secrets are kept in 1Password. The site root returns 404.
+The pages live in `public/` and load `src/` beside them. Every push to `main` deploys to GitHub Pages via `.github/workflows/pages.yml`, under the unguessable folder in the `PAGES_PATH` secret, with `config.js` written from the `SHEETS_CONFIG` secret. Both are kept in 1Password. The site root returns 404. No data is published with the site.
 
-To update the staffing seed, update 1Password, then:
+**Dummy data.** The prototype sheet holds dummy data generated from the ds-staffing snapshot in the discipline sheet: same teams and levels, with people as R001, R002, … and made-up ratings, demand and activity. Discipline heads regenerate it with the portal's **Load dummy data** button, in the browser (`src/dummy.js`). Without a `config.js` the pages show nothing.
 
-```sh
-base64 -i teams.csv | gh secret set TEAMS_CSV
-```
-
-Live storage is moving to Google Sheets and a Google Form, read and written in the browser with each person's own Google account. Setup and sharing: [docs/google-setup.md](docs/google-setup.md). The IDs go in the git-ignored `public/config.js` (copy `public/config.example.js`; values in 1Password).
+**Set-up.** The portal's set-up buttons appear only for discipline heads: whoever Google says may edit the discipline sheet. Everyone else sees the prototypes only.
 
 ## Inputs
 
-Five CSV files in `data/`: the project survey, assessments, activity, the discipline survey and the staffing per quarter. Every row carries its quarter. They are generated from `teams.csv`, the real, anonymised current staffing, which stays out of the repo.
+Five data sets, each a tab in the prototype sheet: the project survey, assessments, activity, the discipline survey and the staffing per quarter. Every row carries its quarter.
 
 | File | Source | Columns |
 |---|---|---|
