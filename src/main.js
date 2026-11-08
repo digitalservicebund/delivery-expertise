@@ -1,4 +1,4 @@
-import { load, currentMode } from "./source.js";
+import { load } from "./source.js";
 import { inBuckets } from "./buckets.js";
 import { personaView, SIGNAL } from "./persona.js";
 import { buildModel, change, LEVELS, METHOD_NAME, personalRatings, reconciledStatus, DOMAIN } from "./model.js";
@@ -880,11 +880,12 @@ let redraw = () => {};
 new ResizeObserver(() => redraw()).observe(svg);
 
 try {
-  // Live supply is counted per bucket, so live demand is mapped to the same buckets. Prototype data has none.
-  const live = (await currentMode()) === "live";
-  const { data: sets, mode } = await load([...Object.values(SOURCES), ...(live ? ["buckets"] : [])]);
+  // Supply is counted per bucket, so demand is mapped to the same buckets. Live supply comes per bucket already;
+  // prototype ratings and activity are per area and get mapped too. Without a buckets tab nothing changes.
+  const { data: sets, mode } = await load([...Object.values(SOURCES), "buckets"]);
   const loaded = Object.fromEntries(Object.entries(SOURCES).map(([k, name]) => [k, sets[name]]));
-  Object.assign(loaded, inBuckets(loaded, sets.buckets ?? []));
+  const { demand, plan, assessments, activity } = loaded;
+  Object.assign(loaded, inBuckets(mode === "live" ? { demand, plan } : { demand, plan, assessments, activity }, sets.buckets ?? []));
   // Everything is drawn per person and team: without staffing there is nothing to draw.
   if (!loaded.staffing.length) {
     throw new Error(mode === "live" ? "The discipline sheet's staffing tab is empty: paste the ds-staffing snapshot into it." : "No staffing data.");

@@ -59,9 +59,10 @@ async function responsesTab(config, t) {
 }
 
 // The current buckets from the discipline sheet: the names the IC form and supply use.
-async function readBucketTab(config, t) {
-  const id = config.sheets.discipline;
-  const { rows } = await withSheet(config, t, id, SHEET_LABEL.discipline, () => readTabs(t, id, ["buckets"]));
+// sheet: "discipline" holds the real buckets; "prototype" holds the dummy ones, written by the panel in prototype mode.
+async function readBucketTab(config, t, sheet = "discipline") {
+  const id = config.sheets[sheet];
+  const { rows } = await withSheet(config, t, id, SHEET_LABEL[sheet], () => readTabs(t, id, ["buckets"]));
   return rows.buckets;
 }
 
@@ -139,6 +140,10 @@ const listOf = (lines) => { const ul = el("ul"); ul.append(...lines.map((l) => e
 const bucketList = (groups) => listOf(groups.map((g) => `${g.name}: ${g.areas.join(", ")}`));
 let bucketState = null;
 
+// Where the panel reads and writes buckets: the discipline sheet live, the prototype sheet in prototype mode, so
+// trying out a grouping on dummy data never touches the real one. Set up IC form and live sheets always use live.
+const bucketSheet = () => (mode === "live" ? "discipline" : "prototype");
+
 // Demand as everyone sees it: the aggregate sheet live, the prototype sheet otherwise. Gives the areas teams added.
 async function readDemand(config, t) {
   const [sheet, tab] = mode === "live" ? ["aggregate", "demand"] : ["prototype", "project-demand"];
@@ -148,7 +153,7 @@ async function readDemand(config, t) {
 }
 
 async function showBuckets(config, t) {
-  const [current, demand] = await Promise.all([readBucketTab(config, t), readDemand(config, t)]);
+  const [current, demand] = await Promise.all([readBucketTab(config, t, bucketSheet()), readDemand(config, t)]);
   const areas = areasToGroup(demand, current, AREA_NAMES);
   bucketState = { current, demand, areas };
   const { ungrouped, stale, empty } = pending(current, areas);
@@ -205,14 +210,17 @@ async function previewBuckets(config, t) {
 }
 
 async function applyBuckets(config, t) {
-  const id = config.sheets.discipline;
+  const sheet = bucketSheet();
+  const id = config.sheets[sheet];
   const rows = bucketRows(bucketState.proposed, new Date().toISOString());
-  await withSheet(config, t, id, SHEET_LABEL.discipline, () => replaceTabs(t, id, { buckets: rows }));
+  await withSheet(config, t, id, SHEET_LABEL[sheet], () => replaceTabs(t, id, { buckets: rows }));
   applyButton.hidden = true;
   answerBox.value = "";
   document.getElementById("buckets-proposed").replaceChildren();
   await showBuckets(config, t);
-  bucketStatus.replaceChildren("Saved. Run Set up IC form and then Set up live sheets, so the form and the supply counts use the new buckets. Renamed or new buckets get new response columns; answers under old names are no longer counted.");
+  bucketStatus.replaceChildren(sheet === "prototype"
+    ? "Saved to the prototype sheet. The discipline view in prototype mode now counts demand, ratings and activity per bucket. The live buckets are unchanged."
+    : "Saved. Run Set up IC form and then Set up live sheets, so the form and the supply counts use the new buckets. Renamed or new buckets get new response columns; answers under old names are no longer counted.");
 }
 
 action(previewButton, "Could not preview the regrouping.", previewBuckets, bucketStatus);

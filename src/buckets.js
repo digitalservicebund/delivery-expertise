@@ -40,14 +40,19 @@ export function topAreas(rows, standard) {
 
 // Supply is counted per bucket, so the discipline view counts demand per bucket too: each demand row's area, and
 // each planned adjustment's subject, becomes its bucket. Areas in no bucket, and domain expertise, stay as they are.
-export function inBuckets({ demand, plan }, rows) {
+// Prototype ratings and activity are per area as well, so they are passed in and mapped too; live supply already
+// comes per bucket and is left out.
+export function inBuckets(data, rows) {
   const bucketOf = new Map(rows.filter((r) => r.area && r.bucket).map((r) => [r.area, r.bucket]));
-  if (!bucketOf.size) return { demand, plan };
+  if (!bucketOf.size) return data;
   const to = (name) => bucketOf.get(name) ?? name;
-  return {
-    demand: demand.map((r) => ({ ...r, expertise: to(r.expertise) })),
-    plan: plan.map((r) => (r.kind === "adjust" ? { ...r, subject: to(r.subject) } : r)),
-  };
+  const out = {};
+  for (const [name, list] of Object.entries(data)) {
+    out[name] = name === "plan"
+      ? list.map((r) => (r.kind === "adjust" ? { ...r, subject: to(r.subject) } : r))
+      : list.map((r) => ({ ...r, expertise: to(r.expertise) }));
+  }
+  return out;
 }
 
 export const bucketRows =(groups, at) =>

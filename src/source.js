@@ -22,6 +22,8 @@ const LIVE = {
   // Which bucket each area is in: the IC form and supply are per bucket (src/buckets.js).
   buckets: ["aggregate", "buckets"],
 };
+// Datasets a page can do without: the buckets tab exists only once a grouping has been applied.
+const OPTIONAL = new Set(["buckets"]);
 const MODE_KEY = "data-mode";
 const LABEL = { prototype: "Prototype data", live: "Live data", unconfigured: "Not set up" };
 
@@ -129,12 +131,14 @@ export async function load(names) {
   try {
     if (mode === "live") {
       const { data, missing } = await fromLive(t, config, names);
-      ui.status.textContent = missing.length ? `Not available live yet: ${missing.join(", ")}.` : "";
+      ui.status.textContent = missing.some((n) => !OPTIONAL.has(n)) ? `Not available live yet: ${missing.filter((n) => !OPTIONAL.has(n)).join(", ")}.` : "";
       return { data, missing, ...session };
     }
     const { rows: data, absent } = await readSheet(config, t, "prototype", names);
     // The prototype sheet should have every tab: if not, it hasn't been filled yet.
-    if (absent.length) throw new Error(`The prototype sheet has no ${absent.join(", ")} tab${absent.length > 1 ? "s" : ""}.`);
+    // buckets are optional: none until a discipline head applies a grouping in the portal.
+    const lacking = absent.filter((n) => !OPTIONAL.has(n));
+    if (lacking.length) throw new Error(`The prototype sheet has no ${lacking.join(", ")} tab${lacking.length > 1 ? "s" : ""}.`);
     ui.status.textContent = "";
     return { data, missing: [], ...session };
   } catch (err) {

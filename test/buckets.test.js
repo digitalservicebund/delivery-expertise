@@ -50,6 +50,13 @@ test("demand and planned adjustments are counted per bucket, so they meet supply
   assert.deepEqual(inBuckets({ demand, plan }, []), { demand, plan });
 });
 
+test("prototype ratings and activity are per area, so they are mapped to buckets too, when given", () => {
+  const rows = [{ area: "React", bucket: "Web" }];
+  const out = inBuckets({ demand: [], plan: [], assessments: [{ expertise: "React", level: 4 }], activity: [{ expertise: "React" }] }, rows);
+  assert.deepEqual([out.assessments[0].expertise, out.activity[0].expertise], ["Web", "Web"]);
+  assert.deepEqual(Object.keys(inBuckets({ demand: [], plan: [] }, rows)), ["demand", "plan"]);
+});
+
 test("buckets are written one row per area, stamped", () => {
   assert.deepEqual(BUCKET_HEADER, ["area", "bucket", "generated_at"]);
   assert.deepEqual(bucketRows([{ name: "Web", areas: ["Frontend", "CSS"] }], "T"), [
