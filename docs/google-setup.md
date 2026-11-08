@@ -92,7 +92,7 @@ Questions:
 
 1. **Whose expertise are you rating?** `Myself` or `A colleague`. Required. `Myself` skips straight to the ratings.
 2. **Your colleague's email**, in a section only `A colleague` goes through. The API can't add email validation, so add it by hand if you want it.
-3. **Expertise**: a grid, one row per area, required. The rows are the buckets from the discipline sheet's `buckets` tab, or the project survey's ten areas (`src/areas.js`) while it is empty. Columns: `Not my area`, `Learning`, `Operative`, `Conceptual`, `Strategic`, `Comprehensive`.
+3. **Expertise**: a grid, one row per area, required. The rows are the buckets from the discipline sheet's `buckets` tab, or the ten default buckets (`DEFAULT_BUCKETS` in `src/areas.js`) while it is empty. Columns: `Not my area`, `Learning`, `Operative`, `Conceptual`, `Strategic`, `Comprehensive`.
 4. **Anything to add?** Optional.
 
 The button also turns on verified email collection where the API allows it. These settings only work by hand, in the form's settings:

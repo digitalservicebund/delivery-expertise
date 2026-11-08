@@ -5,7 +5,7 @@ import { bar, currentMode, loadConfig, DATA_TABS, SHEET_LABEL } from "./source.j
 import { token, hasToken, canEdit, readTabs, replaceTabs, setUpTabs, withSheet, tabTitles, getForm, updateForm } from "./google.js";
 import { liveLayout } from "./sheets.js";
 import { FORM_INFO, formItems, formRequests, branchRequest, supplyFormula } from "./icform.js";
-import { AREA_NAMES } from "./areas.js";
+import { AREA_NAMES, DEFAULT_BUCKETS } from "./areas.js";
 import { compareBuckets, bucketPrompt, parseBuckets, readBuckets, bucketRows, areasToGroup, pending, topAreas } from "./buckets.js";
 
 const mode = await currentMode();
@@ -69,7 +69,7 @@ async function readBucketTab(config, t, sheet = "discipline") {
 // Survey sheets first, so the aggregate sheet's imports point at tabs that exist.
 async function setUpLiveSheets(config, t) {
   const layout = liveLayout(config.sheets);
-  const areas = topAreas(await readBucketTab(config, t), AREA_NAMES);
+  const areas = topAreas(await readBucketTab(config, t), DEFAULT_BUCKETS);
   status.replaceChildren(`Finding the IC form's responses…`);
   const lines = [];
   // Without linked responses the rest is still worth setting up: supply just waits for a later run.
@@ -101,7 +101,7 @@ async function setUpLiveSheets(config, t) {
 async function setUpIcForm(config, t) {
   const id = config.icFormId;
   status.replaceChildren("Reading the top areas…");
-  const areas = topAreas(await readBucketTab(config, t), AREA_NAMES);
+  const areas = topAreas(await readBucketTab(config, t), DEFAULT_BUCKETS);
   status.replaceChildren("Reading the IC form…");
   const form = await withSheet(config, t, id, "IC form", () => getForm(t, id), "FORMS");
   status.replaceChildren("Updating the questions…");
@@ -160,7 +160,7 @@ async function showBuckets(config, t) {
   const prompt = document.getElementById("buckets-prompt");
   prompt.hidden = !(empty || ungrouped.length || stale);
   prompt.textContent = empty
-    ? `No buckets yet: the IC form asks about the ${AREA_NAMES.length} standard areas. Ask Gemini to group all ${areas.length} areas.`
+    ? `No buckets yet: the IC form asks about the ${DEFAULT_BUCKETS.length} default buckets. Ask Gemini to group all ${areas.length} areas.`
     : ungrouped.length
       ? `${ungrouped.length} area${ungrouped.length > 1 ? "s aren't" : " isn't"} in a bucket yet: ${ungrouped.join(", ")}. Ask Gemini to regroup.`
       : "The grouping is more than a quarter old. Ask Gemini to regroup, to see whether it still fits.";

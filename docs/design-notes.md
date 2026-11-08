@@ -87,7 +87,7 @@ A switch on the header's second row moves between the two audiences. The discipl
 
 **Why does the tool recommend "Buy" so rarely?** Hiring is slow and costly. It is only suggested for a critical gap that has lasted two quarters, where nobody internal can borrow or grow into it.
 
-**Where do the areas of expertise come from?** A working list of ten areas plus domains, agreed with the discipline. It is meant to change, and adding an area is a matter of adding it to the survey.
+**Where do the areas of expertise come from?** A broad list of about thirty suggested areas plus domains (`src/areas.js`), finer than what the IC form asks about. Teams can add their own. Discipline heads group all of them into exactly ten buckets in the portal, with Gemini; the IC form and supply use the buckets.
 
 **Is the data real?** The staffing is real and anonymised. Everything else in the prototype is generated dummy data, built to show realistic situations, including optimistic leads and stale ratings.
 

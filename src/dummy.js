@@ -3,49 +3,66 @@
 // people are R001, R002, … Runs in the browser (the portal) and in Node (scripts/generate-data.js).
 // Deterministic (seeded) so regenerating from the same snapshot produces identical data.
 import { assessedCoverage, PEOPLE, TECH_LEAD, BOOKABLE_DAYS_PER_QUARTER } from "./model.js";
+import { AREAS, SUPPORT_KEY } from "./areas.js";
 
 const QUARTERS = ["2026-Q1", "2026-Q2", "2026-Q3", "2026-Q4"];
 const COMPLETED = QUARTERS.slice(0, -1); // activity is only recorded for finished quarters
 
 // prevalence: chance an engineer holds this as a personal focus area.
 // trend: per-quarter demand multiplier, so changes have a story to tell.
-// The ten areas of the project survey. Figures merge the earlier, finer areas they replaced:
-// Backend takes API & Integration; Frontend takes Performance and Mobile; Architecture takes Legacy Modernisation;
-// DevOps takes Infrastructure, Observability and Developer Experience; Security takes Identity & Access;
-// Data & AI takes Data, AI Engineering and Search.
+// The project survey's suggested areas (src/areas.js).
 const EXPERTISE = {
-  "Discovery & Inception": { prevalence: 0.12, trend: 1.0 },
-  Backend: { prevalence: 0.6, trend: 1.0 },
-  Frontend: { prevalence: 0.5, trend: 0.98 },
-  Architecture: { prevalence: 0.28, trend: 0.98 },
-  Security: { prevalence: 0.14, trend: 1.12 },
-  "DevOps, CI/CD & Infrastructure": { prevalence: 0.5, trend: 1.03 },
-  "Quality & Documentation": { prevalence: 0.35, trend: 1.0 },
-  "Data & AI": { prevalence: 0.3, trend: 1.12 },
-  "Compliance & Privacy": { prevalence: 0.07, trend: 1.05 },
-  Accessibility: { prevalence: 0.35, trend: 0.75 },
+  "Technical discovery": { prevalence: 0.1, trend: 1.0 },
+  Prototyping: { prevalence: 0.08, trend: 1.0 },
+  "Frontend development": { prevalence: 0.45, trend: 0.98 },
+  "Design systems": { prevalence: 0.15, trend: 0.98 },
+  "Backend development": { prevalence: 0.55, trend: 1.0 },
+  "APIs & integration": { prevalence: 0.3, trend: 1.02 },
+  "Software architecture": { prevalence: 0.25, trend: 0.98 },
+  "Legacy modernisation": { prevalence: 0.1, trend: 1.0 },
+  "Application security": { prevalence: 0.12, trend: 1.12 },
+  "Identity & access": { prevalence: 0.08, trend: 1.1 },
+  "IT security compliance": { prevalence: 0.05, trend: 1.08 },
+  "CI/CD": { prevalence: 0.35, trend: 1.03 },
+  "Cloud infrastructure": { prevalence: 0.25, trend: 1.03 },
+  "Containers & orchestration": { prevalence: 0.2, trend: 1.05 },
+  Observability: { prevalence: 0.15, trend: 1.03 },
+  "Developer experience": { prevalence: 0.1, trend: 1.0 },
+  "Test automation": { prevalence: 0.3, trend: 1.0 },
+  Performance: { prevalence: 0.12, trend: 1.0 },
+  "Technical documentation": { prevalence: 0.15, trend: 1.0 },
+  "Data engineering": { prevalence: 0.2, trend: 1.05 },
+  "Data analysis": { prevalence: 0.12, trend: 1.02 },
+  Search: { prevalence: 0.06, trend: 1.0 },
+  "Machine learning": { prevalence: 0.06, trend: 1.08 },
+  "AI engineering": { prevalence: 0.15, trend: 1.18 },
+  "Data protection": { prevalence: 0.07, trend: 1.05 },
+  Accessibility: { prevalence: 0.3, trend: 0.75 },
+  Mobile: { prevalence: 0.05, trend: 0.95 },
+  "Open source": { prevalence: 0.06, trend: 1.02 },
 };
 
 // Every matching rule contributes, in order; a team works with at most five areas.
 const AFFINITY = [
-  [/agentic|ai\b/i, ["Data & AI", "Backend", "Compliance & Privacy"]],
-  [/platform/i, ["DevOps, CI/CD & Infrastructure", "Security"]],
-  [/rast|zov|kompla|justiz|kommunikation|postfach/i, ["Backend", "Security"]],
-  [/migration/i, ["Architecture", "Data & AI"]],
-  [/ausgaben|data/i, ["Data & AI", "Frontend"]],
-  [/neuris.*(portal|recht)/i, ["Data & AI", "Frontend"]],
-  [/portal|dachmarke|rechner|servicestandard|machen|termin/i, ["Frontend", "Accessibility"]],
-  [/geburt|anfrage|teilhabe|work-and-stay|elterngeld/i, ["Compliance & Privacy", "Security", "Frontend"]],
-  [/discovery|konzept|exploration/i, ["Discovery & Inception"]],
-  [/discovery|konzept|exploration|legistik|regelung|stabsstelle/i, ["Architecture"]],
-  [/valid/i, ["Quality & Documentation"]],
-  [/./, ["Backend", "Frontend", "Quality & Documentation"]],
+  [/agentic|ai\b/i, ["AI engineering", "Backend development", "Data protection"]],
+  [/platform/i, ["CI/CD", "Cloud infrastructure", "Containers & orchestration", "Application security"]],
+  [/rast|zov|kompla|justiz|kommunikation|postfach/i, ["Backend development", "APIs & integration", "Application security"]],
+  [/migration/i, ["Legacy modernisation", "Data engineering"]],
+  [/ausgaben|data/i, ["Data engineering", "Data analysis", "Frontend development"]],
+  [/neuris.*(portal|recht)/i, ["Search", "AI engineering", "Frontend development"]],
+  [/portal|dachmarke|rechner|servicestandard|machen|termin/i, ["Frontend development", "Accessibility", "Design systems"]],
+  [/geburt|anfrage|teilhabe|work-and-stay|elterngeld/i, ["Data protection", "Identity & access", "Frontend development"]],
+  [/discovery|konzept|exploration/i, ["Technical discovery", "Prototyping"]],
+  [/discovery|konzept|exploration|legistik|regelung|stabsstelle/i, ["Software architecture"]],
+  [/valid/i, ["Test automation"]],
+  [/./, ["Backend development", "Frontend development", "Test automation"]],
 ];
-// Areas teams add themselves in the survey, beyond the standard ten, with what they need there. Each project team
+
+// Areas teams add themselves in the survey, beyond the suggested ones, with what they need there. Each project team
 // adds a few at random, so the prototype has many free-text areas to group into buckets, in German and English.
 const ADDED_AREAS = [
   ["Kubernetes", "Cluster operations on STACKIT"], ["Terraform", "Infrastructure as code for new environments"],
-  ["Observability", "Tracing and alerting with OpenTelemetry"], ["Postgres", "Query tuning and migrations"],
+  ["OpenTelemetry", "Tracing across services"], ["Postgres", "Query tuning and migrations"],
   ["React", "Component library migration"], ["Vue", "Nuxt 4 upgrade"], ["Kotlin", "Spring Boot services"],
   ["Rust", "Parser performance"], ["OpenAPI", "Contract-first API design"], ["Keycloak", "Single sign-on for ministry staff"],
   ["Barrierefreiheit", "BITV 2.0 audit fixes"], ["Datenschutz", "DSFA and data retention"], ["UX research", "Usability tests with citizens"],
@@ -55,8 +72,8 @@ const ADDED_AREAS = [
   ["E-Akte", "Integration with the federal e-file"], ["Elasticsearch", "Full-text search over legislation"],
   ["Mobile apps", "Native wrapper for the citizen app"], ["Testautomatisierung", "Playwright end-to-end suite"],
   ["Technical writing", "Developer documentation for partners"], ["FinOps", "Cloud cost reporting"],
-  ["Event streaming", "Kafka between agencies"], ["Open source", "Publishing code under EUPL"],
-  ["Performance", "Load tests before launch"], ["GraphQL", "API for the portal front end"], ["Python", "Data pipelines and notebooks"],
+  ["Event streaming", "Kafka between agencies"], ["EUPL", "Publishing code under the EUPL"],
+  ["Grafana", "Dashboards for the operations team"], ["GraphQL", "API for the portal front end"], ["Python", "Data pipelines and notebooks"],
 ];
 const affinity = (name) =>[...new Set(AFFINITY.filter(([re]) => re.test(name)).flatMap(([, xs]) => xs))].slice(0, 5);
 
@@ -225,7 +242,7 @@ export function generateDummyData(rows) {
   const METHODS = ["operative", "conceptual", "strategic", "comprehensive"]; // levels 3-6
   // Support a team can also draw on, in addition to its own people: the platform team, the legal and IT security
   // team, or the community of practice. Written as a key per row where the team ticked it.
-  const SUPPORT = { "DevOps, CI/CD & Infrastructure": "platform", "Compliance & Privacy": "legal" };
+  const SUPPORT = Object.fromEntries(AREAS.map(([name, support]) => [name, SUPPORT_KEY[support]]));
   const supportFor = (expertise) => (expertise.startsWith("Domain:") ? null : SUPPORT[expertise] ?? "cop");
   // Headcount answers are whole people; a need too small to count as a person is left out.
   const peopleAnswer = (x) => (x < 0.4 ? null : x < 1.5 ? "1" : x < 2.5 ? "2" : x < 4 ? "3" : "5");
@@ -255,8 +272,8 @@ export function generateDummyData(rows) {
           const specifics = ADDED_AREAS.find(([area]) => area === expertise)?.[1] ?? "";
           demandRows.push({ quarter, team: team.name, ...keyed(expertise), method: METHODS[level - 3], people, coverage: coverage[level], support, specifics });
           if (COMPLETED.includes(quarter)) {
-            // Leads tend to overstate need for Architecture; activity reveals it.
-            const realism = expertise === "Architecture" ? 0.4 : 0.7 + rng() * 0.6;
+            // Leads tend to overstate need for software architecture; activity reveals it.
+            const realism = expertise === "Software architecture" ? 0.4 : 0.7 + rng() * 0.6;
             activityRows.push({
               quarter,
               team: team.name,
@@ -333,10 +350,10 @@ export function generateDummyData(rows) {
     ["R056", "Domain expertise", "Justice and courts", "self", 5],
     ["R015", "Domain expertise", "Legislation", "peer", 3],
     ["R008", "Domain expertise", "Family and welfare", "peer", 3],
-    ["R047", "Frontend", "", "self", 5],
-    ["R047", "Frontend", "", "peer", 4],
-    ["R015", "Backend", "", "self", 4],
-    ["R015", "Backend", "", "peer", 3],
+    ["R047", "Frontend development", "", "self", 5],
+    ["R047", "Frontend development", "", "peer", 4],
+    ["R015", "Backend development", "", "self", 4],
+    ["R015", "Backend development", "", "peer", 3],
   ];
   for (const [respondent, expertise, domain, assessor, level] of HAND_ADDED) {
     assessmentRows.push({ quarter: QUARTERS.at(-1), respondent, expertise, domain, assessor, level });
@@ -363,12 +380,12 @@ export function generateDummyData(rows) {
     }),
     // Strategic adjustments: headcount added to or taken from what projects report.
     ...["2026-Q3", "2026-Q4"].flatMap((quarter) => [
-      { quarter, kind: "adjust", subject: "Data & AI", method: "conceptual", value: 2, reason: "Business development" },
-      { quarter, kind: "adjust", subject: "Security", method: "strategic", value: 1, reason: "Building a capability" },
-      { quarter, kind: "adjust", subject: "Security", method: "conceptual", value: 1, reason: "Building a capability" },
-      { quarter, kind: "adjust", subject: "Architecture", method: "strategic", value: -1, reason: "Winding down" },
+      { quarter, kind: "adjust", subject: "AI engineering", method: "conceptual", value: 2, reason: "Business development" },
+      { quarter, kind: "adjust", subject: "Application security", method: "strategic", value: 1, reason: "Building a capability" },
+      { quarter, kind: "adjust", subject: "Application security", method: "conceptual", value: 1, reason: "Building a capability" },
+      { quarter, kind: "adjust", subject: "Software architecture", method: "strategic", value: -1, reason: "Winding down" },
     ]),
-    { quarter: "2026-Q4", kind: "adjust", subject: "Security", method: "strategic", value: 1, reason: "Expected project" },
+    { quarter: "2026-Q4", kind: "adjust", subject: "Application security", method: "strategic", value: 1, reason: "Expected project" },
     // Tech lead targets for teams whose need differs from the default for their size.
     ...QUARTERS.flatMap((quarter) => [
       { quarter, kind: "tech-lead", subject: "Rechtsinformationsportal (NeuRIS) / Core", method: "comprehensive", value: 1, reason: "" },
