@@ -286,6 +286,11 @@ if (live && !teams.length) {
 const areas = document.getElementById("areas");
 const form = document.getElementById("survey");
 const demoState = document.getElementById("demo-state");
+// The fresh/historical switch is a prototype demo. Live, earlier answers are always used where there are any.
+if (live) {
+  demoState.value = "historical";
+  demoState.closest("section").hidden = true;
+}
 const search = document.getElementById("area-search");
 const cloud = document.getElementById("cloud");
 const addButton = document.getElementById("add-area");
