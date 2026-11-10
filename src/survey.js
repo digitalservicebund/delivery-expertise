@@ -36,7 +36,7 @@ const slug = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-");
 // previous: method -> { people, coverage, support } from last quarter's answers.
 // hint: method -> people value suggested from recorded work. Both optional.
 // Marked cells get a tiny label (last quarter, e.g. "Q4, 2026", or "Suggested") and a tooltip naming the source.
-const quarterLabel = (q) => q.replace(/^(\d{4})-(Q\d)$/, "$2, $1");
+const quarterLabel = (q) => q?.replace(/^(\d{4})-(Q\d)$/, "$2, $1") ?? "the last quarter";
 function mark(cell, kind, on, tip, tag = "") {
   if (kind === "was") cell.dataset.last = tag;
   cell.classList.toggle(kind, on);
@@ -67,7 +67,7 @@ function areaSection({ id, name, expertise, domain = "", subject, support, examp
       input.checked = previous?.[method] ? was : i === 0;
       const cell = $("td", { class: "need" }, input);
       if (was) mark(cell, "was", true, `Your answer for ${quarterLabel(previous.quarter)}.`, quarterLabel(previous.quarter));
-      if (hint?.[method] === value) mark(cell, "suggested", true, `Suggested from time bookings in ${hint.quarter}. A rough guide only.`);
+      if (hint?.[method] === value) mark(cell, "suggested", true, `Suggested from time bookings in ${quarterLabel(hint.quarter)}. A rough guide only.`);
       row.append(cell);
     });
     COVERAGE.forEach(([value, label], i) => {
@@ -133,7 +133,7 @@ function coverageHint(section, id, hint, how) {
       else value = "adequate";
     }
     for (const input of section.querySelectorAll(`[name="${id}-${slug(m)}-coverage"]`)) {
-      mark(input.parentElement, "suggested", input.value === value, `Suggested from your team's expertise ratings and time bookings in ${hint.quarter}. A rough guide only.`);
+      mark(input.parentElement, "suggested", input.value === value, `Suggested from your team's expertise ratings and time bookings in ${quarterLabel(hint.quarter)}. A rough guide only.`);
     }
     if (value) lines.push([$("strong", {}, m), `: you need ${n}, ${rated} rated at this level or above, about ${round1(work)} booked, so `, $("strong", {}, value), "."]);
   }
