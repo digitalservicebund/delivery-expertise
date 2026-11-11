@@ -15,7 +15,7 @@ The prototypes store everything in Google Sheets and a Google Form. There is no 
 
 Every page reads through one loader, `src/source.js`, and shows a bar at the top saying which data it shows, with a switch and a Google sign-in button when needed.
 
-- **Prototype** (the default) reads the prototype sheet. It has one tab per generated CSV, named like the file without `.csv`: `staffing`, `discipline-plan`, `project-demand`, `historical-activity`, `expertise-assessments`. Fill or refresh it with **Load dummy data** on the portal, which generates the dummy data in the browser from the discipline sheet's `staffing` snapshot and writes it with your own access. Survey pages write nothing. Nobody signs in to view prototype data: pages read the sheet with the API key, so it must be shared as **Anyone with the link can view**. Only the portal's set-up asks for sign-in. The discipline view isn't limited to discipline heads in prototype mode, and the self-assessment goes straight to the charts without opening the form.
+- **Prototype** (the default) reads the prototype sheet. It has one tab per generated CSV, named like the file without `.csv`: `staffing`, `discipline-plan`, `project-demand`, `historical-activity`, `expertise-assessments`. Fill or refresh it with **Load dummy data** on the portal, which generates the dummy data in the browser from the discipline sheet's `staffing` snapshot and writes it with your own access. Survey pages write nothing. Share it with everyone in the organisation (viewer). Prototype pages also ask for read-only access to spreadsheets (`spreadsheets.readonly`), so people sign in but never see the Picker for it; the OAuth consent screen must be **Internal** for that scope to need no Google verification. The self-assessment goes straight to the charts in prototype mode without opening the form.
 - **Live** reads `demand`, `plan` and `supply` from the aggregate sheet. The survey adds the projects sheet's `teams` list. The discipline view adds the discipline sheet's `staffing` snapshot, which only discipline heads can open (`src/live.js` turns both into the dummy data's shapes):
   - **Staffing:** active engineers only, each once, in the team with their largest assignment, with names and emails dropped. One quarter only, with no people leads.
   - **Supply:** the anonymous counts become ratings that belong to no team. They count for the whole discipline, but a project or team filter leaves them out, so filtered views rest on what the leads reported.
@@ -24,7 +24,7 @@ Every page reads through one loader, `src/source.js`, and shows a bar at the top
 
 `?mode=live` or `?mode=prototype` switches, and the choice holds for the browser tab's session. The access token is also kept for the tab's session only, so moving between pages doesn't ask again. It expires within the hour.
 
-The dummy data is generated from the ds-staffing snapshot in the discipline sheet. Names and emails stay there, but project and team names are real. The prototype sheet is shared by link, so anyone who has its ID (it is in the deployed `config.js`) can read those names.
+The dummy data is generated from the ds-staffing snapshot in the discipline sheet. Names and emails stay there, but project and team names are real. The prototype sheet is shared within the organisation, so anyone in it can read those names.
 
 The IDs live in `public/config.js`, which is git-ignored. On deploy it is written from the `SHEETS_CONFIG` repository secret by `scripts/write-config.js`. The secret holds the JSON shape in `public/config.example.js`. Its master copy, and the OAuth credentials JSON with its client secret, are in 1Password. The client secret is never used and never goes into the config.
 
@@ -38,7 +38,7 @@ In Google Cloud: an OAuth client of type **Web application**, consent screen **I
 
 Two scopes: `userinfo.email`, so the survey knows who is answering, and `drive.file`, so the app can reach only files a person has handed to it. The first time a page needs a sheet, Google answers 404, and the page opens Google Picker showing just that sheet. One **Select** hands it over for good, on every device, until the person removes the app's access in their Google account. Nobody grants access to all their spreadsheets.
 
-The Picker needs an API key (`pickerKey` in the config). It identifies the project and grants no access. Restrict it to **Websites** `http://localhost:8000/*` and `https://digitalservicebund.github.io/delivery-expertise/*`, and to the **Google Picker API** and **Google Sheets API** only. With the Sheets API it reads the link-shared prototype sheet without sign-in. The Picker's app ID is the project number, taken from the start of the client ID.
+The Picker needs an API key (`pickerKey` in the config). It identifies the project and grants no access. Restrict it to **Websites** `http://localhost:8000/*` and `https://digitalservicebund.github.io/delivery-expertise/*`, and to the **Google Picker API** only. The Picker's app ID is the project number, taken from the start of the client ID.
 
 ## Setting up the sheets
 
