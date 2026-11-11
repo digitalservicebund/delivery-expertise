@@ -3,7 +3,7 @@
 //   live:      the real sheets. Only what exists live is returned; the rest comes back empty and listed as missing.
 //   unconfigured: no config.js, e.g. a fresh clone. Pages say so and show nothing.
 // ?mode=live or ?mode=prototype switches, and the choice is kept for the browser tab's session.
-import { token, hasToken, readTabs, withSheet, grantAll } from "./google.js";
+import { token, hasToken, readTabs, withSheet } from "./google.js";
 import { latestSubmissions } from "./sheets.js";
 import { staffingFromSnapshot, assessmentsFromSupply, quarterOf } from "./live.js";
 
@@ -77,12 +77,12 @@ export function bar(mode) {
 }
 
 // Resolves with a token, showing a sign-in button first if there is none.
-function signIn(clientId, ui, opts) {
-  if (hasToken(opts)) return token(clientId, opts);
+function signIn(clientId, ui) {
+  if (hasToken()) return token(clientId);
   return new Promise((resolve, reject) => {
     const button = Object.assign(document.createElement("button"), { type: "button", textContent: "Sign in with Google to load data" });
     ui.status.replaceChildren(button);
-    button.addEventListener("click", () => token(clientId, opts).then((t) => (button.remove(), resolve(t)), reject));
+    button.addEventListener("click", () => token(clientId).then((t) => (button.remove(), resolve(t)), reject));
   });
 }
 
@@ -95,8 +95,6 @@ async function fromLive(t, config, names) {
   const data = Object.fromEntries(names.map((n) => [n, []]));
   const missing = names.filter((n) => !LIVE[n]);
   const bySheet = Map.groupBy(names.filter((n) => LIVE[n]), (n) => LIVE[n][0]);
-  // Every sheet this page reads, handed over in one Picker rather than one after another.
-  await grantAll(config, t, [...bySheet.keys()].map((sheet) => ({ id: config.sheets[sheet], label: SHEET_LABEL[sheet] })));
   for (const [sheet, ns] of bySheet) {
     const { rows, absent } = await readSheet(config, t, sheet, ns.map((n) => LIVE[n][1]));
     for (const n of ns) {
@@ -130,9 +128,7 @@ export async function load(names) {
     ui.status.textContent = "Copy public/config.example.js to public/config.js and fill it in from 1Password.";
     throw new Error("No config.js: the pages need the Google sheets to show anything.");
   }
-  // Prototype reads the prototype sheet, shared within the organisation, with read access to sheets: people
-  // sign in but never see the Picker.
-  const t = await signIn(config.clientId, ui, { read: mode !== "live" });
+  const t = await signIn(config.clientId, ui);
   ui.status.textContent = "Loading…";
   const session = { mode, config, token: t, status: ui.status };
   try {
@@ -141,11 +137,7 @@ export async function load(names) {
       ui.status.textContent = missing.some((n) => !OPTIONAL.has(n)) ? `Not available live yet: ${missing.filter((n) => !OPTIONAL.has(n)).join(", ")}.` : "";
       return { data, missing, ...session };
     }
-    const { rows: data, absent } = await readTabs(t, config.sheets.prototype, names).catch((err) => {
-      throw err.status === 403 || err.status === 404
-        ? new Error("You can't open the prototype sheet: it needs sharing with everyone in the organisation.")
-        : err;
-    });
+    const { rows: data, absent } = await readSheet(config, t, "prototype", names);
     // The prototype sheet should have every tab: if not, it hasn't been filled yet.
     // buckets are optional: none until a discipline head applies a grouping in the portal.
     const lacking = absent.filter((n) => !OPTIONAL.has(n));
@@ -153,7 +145,7 @@ export async function load(names) {
     ui.status.textContent = "";
     return { data, missing: [], ...session };
   } catch (err) {
-    ui.status.textContent = mode === "prototype" && !err.message.startsWith("You can't open") ? `${err.message} Load the dummy data from the portal first.` : err.message;
+    ui.status.textContent = mode === "prototype" ? `${err.message} Load the dummy data from the portal first.` : err.message;
     throw err;
   }
 }

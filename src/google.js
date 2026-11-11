@@ -6,11 +6,7 @@ import { rowsFromValues, valuesFromRows, tabRange, headerUpdate } from "./sheets
 const API = "https://sheets.googleapis.com/v4/spreadsheets";
 export const SCOPE = "https://www.googleapis.com/auth/drive.file";
 // Also asked for at sign-in: the person's own email, to know which teams they answer for. Non-sensitive.
-export const EMAIL_SCOPE = "https://www.googleapis.com/auth/userinfo.email";
-// Prototype pages also read any sheet the person can open, so the prototype sheet (shared within the organisation)
-// needs no Picker. Only ever read; writes still go through drive.file.
-export const READ_SCOPE = "https://www.googleapis.com/auth/spreadsheets.readonly";
-export const scopesFor = ({ read = false } = {}) => [SCOPE, EMAIL_SCOPE, ...(read ? [READ_SCOPE] : [])];
+const EMAIL_SCOPE = "https://www.googleapis.com/auth/userinfo.email";
 // Kept for the browser tab's session only, so moving between pages doesn't ask again. Expires within the hour.
 const STORE = "google-token";
 
@@ -28,11 +24,11 @@ const loadGis = () => loadScript("https://accounts.google.com/gsi/client", () =>
 const loadPicker = () => loadScript("https://apis.google.com/js/api.js",
   () => new Promise((resolve) => window.gapi.load("picker", () => resolve(window.google.picker))));
 
-function stored(opts) {
+function stored() {
   try {
     const t = JSON.parse(sessionStorage.getItem(STORE) ?? "null");
-    // A token lacking a scope now needed (e.g. from before it was added) is replaced by a new sign-in.
-    return scopesFor(opts).every((s) => t?.scopes.includes(s)) && t.expires > Date.now() + 60_000 ? t.token : null;
+    // Tokens from before the email scope was added lack it, so they are replaced by a new sign-in.
+    return t?.scopes.includes(SCOPE) && t.scopes.includes(EMAIL_SCOPE) && t.expires > Date.now() + 60_000 ? t.token : null;
   } catch {
     return null;
   }
@@ -40,15 +36,14 @@ function stored(opts) {
 
 // Resolves with a token if one is stored. Otherwise needs a click: call it from a click handler,
 // or browsers block Google's popup.
-// opts: { read: true } on prototype pages, see READ_SCOPE.
-export async function token(clientId, opts) {
-  const cached = stored(opts);
+export async function token(clientId) {
+  const cached = stored();
   if (cached) return cached;
   const oauth2 = await loadGis();
   return new Promise((resolve, reject) => {
     oauth2.initTokenClient({
       client_id: clientId,
-      scope: scopesFor(opts).join(" "),
+      scope: `${SCOPE} ${EMAIL_SCOPE}`,
       callback: (res) => {
         if (res.error) return reject(new Error(res.error_description ?? res.error));
         try {
@@ -60,7 +55,7 @@ export async function token(clientId, opts) {
     }).requestAccessToken();
   });
 }
-export const hasToken = (opts) => Boolean(stored(opts));
+export const hasToken = () => Boolean(stored());
 export function signOut() {
   try { sessionStorage.removeItem(STORE); } catch { /* nothing stored */ }
 }
