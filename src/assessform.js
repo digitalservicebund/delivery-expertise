@@ -49,6 +49,10 @@ const domains = [...form.areas.keys()].filter((n) => n.startsWith(`${DOMAIN}: `)
 const questions = [...areas, ...domains];
 state.ratings = followBuckets(state.ratings, questions, session.data["bucket-history"] ?? []);
 document.getElementById("own-view").hidden = !state.submitted;
+if (!live) {
+  submit.textContent = "Submit";
+  document.getElementById("intro").textContent = "Rate how you work in each of the discipline's top areas today. Your answers stay in this browser. Submit to see the discipline charts from your own answers: where your skills are needed and where to grow, against demand across the whole discipline. No team or colleague is ever named.";
+}
 
 function renderTable() {
   const head = $("tr", {}, $("th", { scope: "col", textContent: "Area" }), ...RATINGS.map((r) => $("th", { scope: "col", textContent: r })));
