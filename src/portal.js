@@ -2,7 +2,7 @@
 // dummy data, set up the live sheets' tabs and imports, and set up the IC form.
 import { generateDummyData } from "./dummy.js";
 import { bar, currentMode, loadConfig, DATA_TABS, SHEET_LABEL } from "./source.js";
-import { token, hasToken, canEdit, readTabs, readHeader, replaceTabs, appendRows, setUpTabs, withSheet, tabTitles, getForm, updateForm } from "./google.js";
+import { token, hasToken, canEdit, readTabs, readHeader, replaceTabs, appendRows, setUpTabs, withSheet, grantAll, tabTitles, getForm, updateForm } from "./google.js";
 import { liveLayout } from "./sheets.js";
 import { FORM_INFO, formItems, formRequests, branchRequest, supplyFormula } from "./icform.js";
 import { readAreas, areaIssues, areasMissingFrom, AREA_HEADER } from "./areas.js";
@@ -112,6 +112,8 @@ async function recoverHistory(config, t, tab, buckets, history, catalogue, lines
 
 // Survey sheets first, so the aggregate sheet's imports point at tabs that exist.
 async function setUpLiveSheets(config, t) {
+  // Every sheet set up below, handed over in one Picker rather than one after another.
+  await grantAll(config, t, ["discipline", "projects", "aggregate", "icResponses"].map((sheet) => ({ id: config.sheets[sheet], label: SHEET_LABEL[sheet] })));
   const layout = liveLayout(config.sheets);
   const { buckets, history, examples } = await readBucketTabs(config, t);
   const { rows: areaRows, catalogue } = await readCatalogue(config, t);

@@ -73,27 +73,48 @@ async function call(accessToken, url, init = {}) {
   return body;
 }
 
-// Google Picker showing only the one expected sheet. Picking it hands that file to the app, for good.
-async function pick({ clientId, pickerKey }, accessToken, sheetId, label, viewId = "SPREADSHEETS") {
+const isUngranted = (err) => err.status === 404 || err.status === 403;
+
+// Google Picker showing only the expected files, all selectable at once. Picking hands them to the app, for good.
+// files: [{ id, label }]. viewId: DOCS when the files are of mixed kinds (sheets and a form).
+async function pick({ clientId, pickerKey }, accessToken, files, viewId = "SPREADSHEETS") {
   const picker = await loadPicker();
+  const names = files.map((f) => `“${f.label}”`).join(", ");
   return new Promise((resolve, reject) => {
-    const view = new picker.DocsView(picker.ViewId[viewId]).setFileIds(sheetId).setMode(picker.DocsViewMode.LIST);
+    const view = new picker.DocsView(picker.ViewId[viewId]).setFileIds(files.map((f) => f.id).join(",")).setMode(picker.DocsViewMode.LIST);
     new picker.PickerBuilder()
-      .setTitle(`Select “${label}” to let this page use it`)
+      .setTitle(files.length > 1 ? `Select all ${files.length} files (${names}) to let this page use them` : `Select ${names} to let this page use it`)
       .addView(view)
+      .enableFeature(picker.Feature.MULTISELECT_ENABLED)
       .setOAuthToken(accessToken)
       .setDeveloperKey(pickerKey)
       // The app ID is the Cloud project number, the first part of the OAuth client ID.
       .setAppId(clientId.split("-")[0])
       .setCallback((res) => {
         if (res.action === picker.Action.PICKED) {
-          return res.docs[0]?.id === sheetId ? resolve() : reject(new Error(`That isn't the ${label}. Please select the one shown.`));
+          const left = unpicked(files, res.docs);
+          return left.length ? reject(new Error(`Still needed: ${left.map((f) => f.label).join(", ")}. Please select every file shown.`)) : resolve();
         }
-        if (res.action === picker.Action.CANCEL) reject(new Error(`The ${label} is needed to continue.`));
+        if (res.action === picker.Action.CANCEL) reject(new Error(`${names} ${files.length > 1 ? "are" : "is"} needed to continue.`));
       })
       .build()
       .setVisible(true);
   });
+}
+export const unpicked = (files, docs = []) => files.filter((f) => !docs.some((d) => d.id === f.id));
+
+// A fresh Picker grant takes a moment to reach the APIs: until then they still answer 404. Retrying right away
+// failed, and only a page reload got past it. So retry a few times, waiting longer each time.
+export async function retryUngranted(fn, delays = [500, 1000, 2000, 4000], wait = (ms) => new Promise((r) => setTimeout(r, ms))) {
+  for (const ms of delays) {
+    try {
+      return await fn();
+    } catch (err) {
+      if (!isUngranted(err)) throw err;
+      await wait(ms);
+    }
+  }
+  return fn();
 }
 
 // Runs fn; if Google says the app has no access to the sheet yet, asks the person to hand it over in the
@@ -102,11 +123,25 @@ export async function withSheet(config, accessToken, sheetId, label, fn, viewId 
   try {
     return await fn();
   } catch (err) {
-    if (err.status !== 404 && err.status !== 403) throw err;
-    await pick(config, accessToken, sheetId, label, viewId);
-    return fn();
+    if (!isUngranted(err)) throw err;
+    await pick(config, accessToken, [{ id: sheetId, label }], viewId);
+    return retryUngranted(fn);
   }
 }
+
+// Hands over, in one Picker, every file in files ([{ id, label }]) the app can't reach yet, so a page that needs
+// several asks once instead of once per file. Files already handed over are left out; none left, no Picker.
+export async function grantAll(config, accessToken, files, viewId = "SPREADSHEETS") {
+  const reachable = await Promise.all(files.map((f) => fileMeta(accessToken, f.id).then(() => true, (err) => {
+    if (isUngranted(err)) return false;
+    throw err;
+  })));
+  const missing = files.filter((_, i) => !reachable[i]);
+  if (!missing.length) return;
+  await pick(config, accessToken, missing, viewId);
+  await Promise.all(missing.map((f) => retryUngranted(() => fileMeta(accessToken, f.id))));
+}
+const fileMeta = (accessToken, fileId) => call(accessToken, `https://www.googleapis.com/drive/v3/files/${fileId}?fields=id&supportsAllDrives=true`);
 
 // A tab's first row: its column headers, as text.
 export async function readHeader(accessToken, sheetId, tab) {

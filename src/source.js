@@ -3,7 +3,7 @@
 //   live:      the real sheets. Only what exists live is returned; the rest comes back empty and listed as missing.
 //   unconfigured: no config.js, e.g. a fresh clone. Pages say so and show nothing.
 // ?mode=live or ?mode=prototype switches, and the choice is kept for the browser tab's session.
-import { token, hasToken, readTabs, withSheet } from "./google.js";
+import { token, hasToken, readTabs, withSheet, grantAll } from "./google.js";
 import { latestSubmissions } from "./sheets.js";
 import { staffingFromSnapshot, assessmentsFromSupply, quarterOf } from "./live.js";
 
@@ -95,6 +95,8 @@ async function fromLive(t, config, names) {
   const data = Object.fromEntries(names.map((n) => [n, []]));
   const missing = names.filter((n) => !LIVE[n]);
   const bySheet = Map.groupBy(names.filter((n) => LIVE[n]), (n) => LIVE[n][0]);
+  // Every sheet this page reads, handed over in one Picker rather than one after another.
+  await grantAll(config, t, [...bySheet.keys()].map((sheet) => ({ id: config.sheets[sheet], label: SHEET_LABEL[sheet] })));
   for (const [sheet, ns] of bySheet) {
     const { rows, absent } = await readSheet(config, t, sheet, ns.map((n) => LIVE[n][1]));
     for (const n of ns) {
