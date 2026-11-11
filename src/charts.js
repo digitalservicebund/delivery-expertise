@@ -896,7 +896,9 @@ let ownView = false;
 let saved = null;
 
 // Only discipline heads see the discipline view: whoever may edit the discipline sheet, as on the portal.
-async function isHead({ config, token }) {
+// Prototype data is dummy data in a sheet shared by link: no gate, and no sign-in.
+async function isHead({ mode, config, token }) {
+  if (mode !== "live") return true;
   const id = config.sheets.discipline;
   try {
     return await withSheet(config, token, id, SHEET_LABEL.discipline, () => canEdit(token, id));

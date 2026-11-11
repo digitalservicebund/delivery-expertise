@@ -31,8 +31,10 @@ if (!buckets.length) {
 }
 
 // The form's link and entry IDs, from the aggregate sheet, written by the portal's Set up IC form.
+// Prototype: no form is opened, so nobody signs in. Submitting just goes to the charts.
+const live = session.mode === "live";
 let form = readFormRows([]);
-try {
+if (live) try {
   const id = session.config.sheets.aggregate;
   const { rows } = await withSheet(session.config, session.token, id, SHEET_LABEL.aggregate, () => readTabs(session.token, id, ["form"]));
   form = readFormRows(rows.form);
@@ -70,8 +72,8 @@ function renderTable() {
 
 function update() {
   const missing = areas.filter((a) => !state.ratings[a]);
-  submit.disabled = !form.url || missing.length > 0;
-  rateStatus.textContent = !form.url
+  submit.disabled = (live && !form.url) || missing.length > 0;
+  rateStatus.textContent = live && !form.url
     ? "The form isn't linked yet: the discipline head runs Set up IC form in the portal once."
     : missing.length ? `${missing.length} of ${areas.length} areas to go. The form asks about every one; choose Not my area where it isn't.` : "";
 }
@@ -79,7 +81,7 @@ function update() {
 // Opens the form in a new tab straight from the click, so the browser allows it, and takes this tab to the charts.
 // The page can't see whether the form was then submitted; opening it counts. Peer validation is the real check.
 submit.addEventListener("click", () => {
-  window.open(prefillUrl(form, state.ratings), "_blank", "noopener");
+  if (live) window.open(prefillUrl(form, state.ratings), "_blank", "noopener");
   state.submitted = true;
   saveAssessment(state);
   location.assign(OWN_VIEW);

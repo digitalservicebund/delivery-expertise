@@ -66,8 +66,15 @@ class ApiError extends Error {
     this.status = status;
   }
 }
-async function call(accessToken, url, init = {}) {
-  const res = await fetch(url, { ...init, headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" } });
+// auth: an access token, or { key } to read a sheet shared by link without signing in (prototype mode).
+export function request(auth, url) {
+  const headers = { "Content-Type": "application/json" };
+  if (typeof auth === "string") return { url, headers: { Authorization: `Bearer ${auth}`, ...headers } };
+  return { url: `${url}${url.includes("?") ? "&" : "?"}key=${encodeURIComponent(auth.key)}`, headers };
+}
+async function call(auth, url, init = {}) {
+  const req = request(auth, url);
+  const res = await fetch(req.url, { ...init, headers: req.headers });
   const body = await res.json().catch(() => ({}));
   if (!res.ok) throw new ApiError(body.error?.message ?? `Google Sheets: ${res.status}`, res.status);
   return body;

@@ -128,7 +128,9 @@ export async function load(names) {
     ui.status.textContent = "Copy public/config.example.js to public/config.js and fill it in from 1Password.";
     throw new Error("No config.js: the pages need the Google sheets to show anything.");
   }
-  const t = await signIn(config.clientId, ui);
+  // Prototype reads the prototype sheet, shared by link, with the API key: nobody signs in to see dummy data.
+  // Only the portal signs in, for the discipline head who fills it.
+  const t = mode === "live" ? await signIn(config.clientId, ui) : null;
   ui.status.textContent = "Loading…";
   const session = { mode, config, token: t, status: ui.status };
   try {
@@ -137,7 +139,11 @@ export async function load(names) {
       ui.status.textContent = missing.some((n) => !OPTIONAL.has(n)) ? `Not available live yet: ${missing.filter((n) => !OPTIONAL.has(n)).join(", ")}.` : "";
       return { data, missing, ...session };
     }
-    const { rows: data, absent } = await readSheet(config, t, "prototype", names);
+    const { rows: data, absent } = await readTabs({ key: config.pickerKey }, config.sheets.prototype, names).catch((err) => {
+      throw err.status === 403 || err.status === 404
+        ? new Error("Can't open the prototype sheet without signing in: share it as “Anyone with the link can view”, and allow the Sheets API on the API key.")
+        : err;
+    });
     // The prototype sheet should have every tab: if not, it hasn't been filled yet.
     // buckets are optional: none until a discipline head applies a grouping in the portal.
     const lacking = absent.filter((n) => !OPTIONAL.has(n));
@@ -145,7 +151,7 @@ export async function load(names) {
     ui.status.textContent = "";
     return { data, missing: [], ...session };
   } catch (err) {
-    ui.status.textContent = mode === "prototype" ? `${err.message} Load the dummy data from the portal first.` : err.message;
+    ui.status.textContent = mode === "prototype" && !err.message.startsWith("Can't open") ? `${err.message} Load the dummy data from the portal first.` : err.message;
     throw err;
   }
 }
