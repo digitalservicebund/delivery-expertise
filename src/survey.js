@@ -9,6 +9,7 @@ import { DEMAND_HEADER } from "./sheets.js";
 import { teamsOf, projectsByTeam } from "./teams.js";
 import { relevance, matches } from "./cloud.js";
 import { COP, SUPPORT_KEY, readAreas } from "./areas.js";
+import { readProjectTypes, typesByArea, MAX_PROJECT_TYPES } from "./projecttypes.js";
 import { effectiveBuckets, suggestBuckets, demandAreas, surveySections, inBuckets, readExamples } from "./buckets.js";
 import { METHODS as METHOD_LEVEL, PEOPLE as PEOPLE_COUNT, LEVELS, supplyAsOf, assessedCoverage, WORKING_DAYS_PER_QUARTER, UTILISATION, BOOKABLE_DAYS_PER_QUARTER } from "./model.js";
 
@@ -194,6 +195,7 @@ function rowsFor(form, team) {
         comment,
         notes,
         areas: areasPicked,
+        project_types: chosenTypes.join("; "),
       });
     }
   }
@@ -203,7 +205,7 @@ function rowsFor(form, team) {
 // Missing datasets come back empty: the survey still works, just without suggestions or a team list.
 // Live reads the teams tab instead of staffing: staffing sits in the discipline sheet, which project leads
 // can't open. The teams tab says who may answer for which team.
-const BUCKET_TABS = ["buckets", "bucket-history", "areas", "bucket-examples"];
+const BUCKET_TABS = ["buckets", "bucket-history", "areas", "bucket-examples", "project-types"];
 const LIVE_TABS = [...DATA_TABS.filter((n) => n !== "staffing"), "teams", ...BUCKET_TABS];
 const session = await load((await currentMode()) === "live" ? LIVE_TABS : [...DATA_TABS, ...BUCKET_TABS]);
 const sets = session.data;
@@ -301,6 +303,50 @@ let catalogue = [];
 let picked = [];
 const built = new Map();
 
+// Step 0: up to three project types, each preselecting the areas the project-types tab maps to it. Colours go by
+// the order the types were chosen, so three at most need telling apart. autoPicked: areas a type picked that the
+// lead hasn't touched since; unchoosing the type unpicks them unless another chosen type also suggests them.
+const projectTypes = readProjectTypes(sets["project-types"] ?? []);
+const TYPE_COLOURS = ["#e8710a", "#0d9488", "#c026d3"];
+const typesBox = document.getElementById("project-types");
+document.getElementById("types-section").hidden = !projectTypes.length;
+let chosenTypes = [];
+const autoPicked = new Set();
+const typesOf = (area) => typesByArea(projectTypes, chosenTypes).get(area.name.toLowerCase()) ?? [];
+const dot = (type) => $("span", { class: "dot", style: `background:${TYPE_COLOURS[chosenTypes.indexOf(type)]}`, "aria-hidden": "true" });
+
+function renderTypes() {
+  const full = chosenTypes.length >= MAX_PROJECT_TYPES;
+  typesBox.replaceChildren(...projectTypes.map(({ name }) => {
+    const on = chosenTypes.includes(name);
+    const input = $("input", { type: "checkbox", value: name });
+    input.checked = on;
+    input.disabled = full && !on;
+    input.addEventListener("change", () => chooseType(name, input.checked));
+    return $("label", { class: full && !on ? "full" : "" }, input, name, ...(on ? [dot(name)] : []));
+  }));
+  // A chosen type that suggests nothing in the cloud: its areas are blank, or named unlike the area list.
+  const silent = chosenTypes.filter((t) => !catalogue.some((a) => typesOf(a).includes(t)));
+  if (silent.length) typesBox.append($("p", { class: "muted" }, `No areas are mapped to ${silent.join(", ")} yet, so nothing was picked for it.`));
+}
+
+function chooseType(name, on) {
+  chosenTypes = on ? [...chosenTypes, name] : chosenTypes.filter((t) => t !== name);
+  for (const a of catalogue) {
+    const suggested = typesOf(a).length > 0;
+    if (suggested && !picked.includes(a.id)) {
+      picked.push(a.id);
+      autoPicked.add(a.id);
+    } else if (!suggested && autoPicked.has(a.id)) {
+      picked = picked.filter((p) => p !== a.id);
+      autoPicked.delete(a.id);
+    }
+  }
+  renderTypes();
+  renderCloud();
+  renderPicked();
+}
+
 // The cloud offers areas: the suggested ones, every area in a bucket, every area a team has added before, and the
 // project's domain. Each knows its bucket; a write-in another team placed keeps the bucket that team chose.
 function catalogueFor(team) {
@@ -347,7 +393,9 @@ function renderCloud() {
   cloud.replaceChildren(...shown.map((a) => {
     const w = weights[weightKey(a)] ?? 0;
     const on = picked.includes(a.id);
-    const button = $("button", { type: "button", "aria-pressed": String(on), style: `font-size:${(0.85 + w * 1.15).toFixed(2)}rem`, title: a.custom ? "Added by a team" : "" }, a.name);
+    const types = typesOf(a);
+    const button = $("button", { type: "button", "aria-pressed": String(on), style: `font-size:${(0.85 + w * 1.15).toFixed(2)}rem`, title: a.custom ? "Added by a team" : "" }, a.name, ...types.map(dot));
+    if (types.length) button.setAttribute("aria-description", `Suggested for ${types.join(", ")}`);
     button.addEventListener("click", () => toggle(a.id));
     return button;
   }));
@@ -358,6 +406,7 @@ function renderCloud() {
 }
 
 function toggle(id) {
+  autoPicked.delete(id);
   picked = picked.includes(id) ? picked.filter((p) => p !== id) : [...picked, id];
   renderCloud();
   renderPicked();
@@ -455,6 +504,11 @@ function reset() {
   const before = demand.filter((r) => r.quarter === lastAnswered && r.team === team);
   const named = new Set(before.flatMap(demandAreas));
   picked = historical ? catalogue.filter((a) => named.has(a.name) || (a.id === "domain" && before.some((r) => r.expertise === "Domain expertise"))).map((a) => a.id) : [];
+  // Last time's project types start chosen too, without picking their areas again: the team already chose those.
+  const known = new Set(projectTypes.map((t) => t.name));
+  chosenTypes = historical ? (before.find((r) => r.project_types)?.project_types.split(";").map((t) => t.trim()).filter((t) => known.has(t)).slice(0, MAX_PROJECT_TYPES) ?? []) : [];
+  autoPicked.clear();
+  renderTypes();
   search.value = "";
   chooser.hidden = true;
   renderCloud();

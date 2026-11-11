@@ -15,8 +15,8 @@ test("only each team's latest submission per quarter counts", () => {
     ["A 2027-Q1 strategic", "A 2026-Q4 operative", "B 2027-Q1 operative"]);
 });
 
-test("demand adds new columns last (notes, then the picked areas), so earlier columns keep their place", () => {
-  assert.deepEqual(DEMAND_HEADER.slice(-4), ["submitted_by", "submitted_at", "notes", "areas"]);
+test("demand adds new columns last (notes, the picked areas, then the project types), so earlier columns keep their place", () => {
+  assert.deepEqual(DEMAND_HEADER.slice(-5), ["submitted_by", "submitted_at", "notes", "areas", "project_types"]);
 });
 
 test("a header that starts the expected one is extended; any other header is left alone", () => {
@@ -37,7 +37,7 @@ test("the aggregate sheet imports the survey sheets without emails or comments",
   assert.equal(layout.discipline.staffing.header[0], "Email");
   assert.ok(!("teams" in layout.aggregate));
   assert.equal(layout.aggregate.demand.formula,
-    '=QUERY(IMPORTRANGE("P", "demand!A:N"), "select Col1, Col2, Col3, Col4, Col5, Col6, Col7, Col8, Col9, Col12, Col14 where Col1 is not null", 1)');
+    '=QUERY(IMPORTRANGE("P", "demand!A:O"), "select Col1, Col2, Col3, Col4, Col5, Col6, Col7, Col8, Col9, Col12, Col14, Col15 where Col1 is not null", 1)');
   assert.equal(layout.aggregate.plan.formula,
     '=QUERY(IMPORTRANGE("D", "plan!A:H"), "select Col1, Col2, Col3, Col4, Col5, Col6, Col8 where Col1 is not null", 1)');
 });

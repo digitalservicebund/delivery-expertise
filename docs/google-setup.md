@@ -86,6 +86,8 @@ An `areas` tab holds the area list: `area | default_bucket | support`, one row p
 
 A `bucket-examples` tab holds one example of the work per working method for each bucket: `bucket | operative | conceptual | strategic | comprehensive`. The project survey shows them above each bucket's grid; a bucket without all four gets generic ones. **Ask Gemini** asks for them along with the grouping and **Apply** writes them; for the default buckets, fill them in here. **Set up live sheets** lists buckets that lack them.
 
+A `project-types` tab maps project types to the areas they usually need: `project_type | areas`, one row per type, the areas separated by semicolons or commas and named as on the `areas` tab (case doesn't matter). An area can be under several types. The project survey offers the types in this order, lets a lead choose up to three, and preselects their areas in the word cloud. **Set up live sheets** adds its header, fills an empty tab with the twelve project types (areas blank), and warns about types without areas and areas the `areas` tab lacks. **Load dummy data** copies it into the prototype sheet.
+
 A `buckets` tab holds the top areas: `area | bucket | generated_at`, one row per area. It is the source of truth for the IC form's grid and the supply counts, which ask and count per bucket. The portal's **Top areas** panel prompts discipline heads when areas are in no bucket or the grouping is over a quarter old, copies a prompt for Gemini (which they run in their own Gemini tab), reads the pasted answer back, previews it against the current buckets and writes it on **Apply**. The app never calls Gemini itself. Rename a bucket by editing the `bucket` column; a renamed bucket gets a new response column in the IC form.
 
 A `bucket-history` tab records where every former bucket went: `bucket | now | changed_at`. **Apply** adds a row for each renamed bucket (to its new name) and each merged one (to the bucket that took most of its areas), and moves earlier rows along. A name that becomes a bucket again is dropped. Answers given under a former bucket, in the IC form or saved in an engineer's browser, count towards the bucket it went to. Project survey answers need none of this: they are stored per area and mapped through `buckets` whenever they are read.
@@ -133,6 +135,8 @@ IC answers are stored per bucket name, so after a regrouping older answers sit i
 **`areas`** copies the discipline sheet's `areas` tab, so the project survey and the IC pages can read the area list.
 
 **`bucket-examples`** copies the discipline sheet's `bucket-examples` tab, for the project survey.
+
+**`project-types`** copies the discipline sheet's `project-types` tab, for the project survey.
 
 **`buckets`** copies the discipline sheet's `buckets` tab: area and bucket names only. In live mode the discipline view maps demand and planned adjustments to these buckets, so they meet supply, which is counted per bucket. Areas in no bucket and domain expertise stay as they are.
 

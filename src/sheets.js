@@ -3,6 +3,7 @@
 import { STAFFING_HEADER, teamsFormula } from "./teams.js";
 import { BUCKET_HEADER, HISTORY_HEADER, EXAMPLE_HEADER } from "./buckets.js";
 import { AREA_HEADER } from "./areas.js";
+import { PROJECT_TYPE_HEADER } from "./projecttypes.js";
 
 export function rowsFromValues(values = []) {
   const [header = [], ...body] = values;
@@ -27,7 +28,8 @@ export function latestSubmissions(rows) {
 }
 
 // The live sheets' tabs. Survey sheets get header rows. The aggregate sheet gets one import formula per tab.
-export const DEMAND_HEADER = ["quarter", "team", "expertise", "domain", "method", "people", "coverage", "support", "specifics", "comment", "submitted_by", "submitted_at", "notes", "areas"];
+export const DEMAND_HEADER = ["quarter", "team", "expertise", "domain", "method", "people", "coverage", "support", "specifics", "comment", "submitted_by", "submitted_at", "notes", "areas", "project_types"];
+// project_types: the up to three project types the team chose, "; "-separated, repeated on each row like notes.
 // expertise is the bucket the answer is for; areas the areas the team picked in it, "; "-separated. Shared with the
 // aggregate sheet: area names, needed for regrouping.
 // notes ("Anything we should know?") is for the whole submission, so it repeats on each of its rows.
@@ -59,7 +61,7 @@ export function liveLayout(sheets) {
     projects: { demand: { header: DEMAND_HEADER }, teams: { formula: teamsFormula(sheets.discipline) } },
     // Pasted by hand from the ds-staffing snapshot export. Holds names and levels: discipline heads only.
     // buckets: the top areas, written by the portal's bucket review (src/buckets.js).
-    discipline: { plan: { header: PLAN_HEADER }, staffing: { header: STAFFING_HEADER }, buckets: { header: BUCKET_HEADER }, "bucket-history": { header: HISTORY_HEADER }, areas: { header: AREA_HEADER }, "bucket-examples": { header: EXAMPLE_HEADER } },
+    discipline: { plan: { header: PLAN_HEADER }, staffing: { header: STAFFING_HEADER }, buckets: { header: BUCKET_HEADER }, "bucket-history": { header: HISTORY_HEADER }, areas: { header: AREA_HEADER }, "bucket-examples": { header: EXAMPLE_HEADER }, "project-types": { header: PROJECT_TYPE_HEADER } },
     aggregate: {
       demand: { formula: importOf(sheets.projects, "demand", DEMAND_HEADER) },
       plan: { formula: importOf(sheets.discipline, "plan", PLAN_HEADER) },
@@ -71,6 +73,8 @@ export function liveLayout(sheets) {
       areas: { formula: importOf(sheets.discipline, "areas", AREA_HEADER) },
       // Examples per working method for each bucket, shown above its grid in the project survey.
       "bucket-examples": { formula: importOf(sheets.discipline, "bucket-examples", EXAMPLE_HEADER) },
+      // The areas each project type suggests, preselected in the project survey's word cloud.
+      "project-types": { formula: importOf(sheets.discipline, "project-types", PROJECT_TYPE_HEADER) },
     },
   };
 }

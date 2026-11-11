@@ -63,9 +63,15 @@
     .cloud { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 0.4rem 0.9rem; padding: 1rem 0; min-height: 6rem; }
     .cloud button { background: none; color: var(--accent); padding: 0.1rem 0.5rem; border: 1px solid transparent; border-radius: 999px; line-height: 1.2; }
     .cloud button:hover { border-color: var(--line); }
-    .cloud button[aria-pressed="true"] { background: var(--accent); color: #fff; }
+    /* Light, so the project types' coloured dots stay easy on the eye. */
+    .cloud button[aria-pressed="true"] { background: #d2e3fc; border-color: #aecbfa; color: #174ea6; }
     .cloud button[title]:not([title=""]) { font-style: italic; }
     button.secondary { background: #fff; color: var(--accent); border: 1px solid var(--accent); }
+    .types { display: flex; flex-wrap: wrap; gap: 0.4rem 1.25rem; }
+    .types label { display: inline-flex; align-items: center; gap: 0.4rem; }
+    .types label.full { color: var(--muted); }
+    .dot { display: inline-block; width: 0.55em; height: 0.55em; border-radius: 50%; box-shadow: 0 0 0 1.5px #fff; vertical-align: 0.15em; }
+    .cloud button .dot { margin-left: 0.25em; }
     .write-in { margin-top: 0.75rem; padding: 0.75rem 1rem; border: 1px solid var(--line); border-radius: 8px; background: #f8f9fa; }
     .write-in .choices { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
     .write-in select { width: auto; }
@@ -111,6 +117,11 @@
         <h2 id="team-heading">Your team</h2>
         <select id="team" name="team" required aria-labelledby="team-heading"><option value="">Choose your project and team</option></select>
         <p id="team-note" class="muted" aria-live="polite"></p>
+      </section>
+      <section id="types-section" hidden>
+        <h2 id="types-heading">What kind of project is it?</h2>
+        <p class="muted">Pick up to three. Each picks the areas such projects usually need in the cloud below, marked with its colour. Unpick any your team doesn't need.</p>
+        <div id="project-types" class="types" role="group" aria-labelledby="types-heading"></div>
       </section>
       <section>
         <h2 id="pick-heading">Which areas does your team need?</h2>

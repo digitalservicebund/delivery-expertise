@@ -7,6 +7,7 @@ import { liveLayout } from "./sheets.js";
 import { FORM_INFO, formItems, formRequests, branchRequest, supplyFormula } from "./icform.js";
 import { readAreas, areaIssues, areasMissingFrom, AREA_HEADER } from "./areas.js";
 import { formRows } from "./prefill.js";
+import { PROJECT_TYPE_HEADER, PROJECT_TYPE_SEED, readProjectTypes, projectTypeIssues, dummyProjectTypes } from "./projecttypes.js";
 import { compareBuckets, bucketPrompt, parseBuckets, readBuckets, bucketRows, areasToGroup, pending, topAreas, nextHistory, aliasesOf, inferHistory, effectiveBuckets, bucketsWithoutExamples, exampleRows } from "./buckets.js";
 
 const mode = await currentMode();
@@ -36,14 +37,17 @@ function action(button, failure, run, out = status) {
 async function loadDummyData(config, t) {
   status.replaceChildren("Reading the staffing snapshot…");
   const id = config.sheets.discipline;
-  const { rows, absent } = await withSheet(config, t, id, SHEET_LABEL.discipline, () => readTabs(t, id, ["staffing", "areas"]));
-  if (absent.length || !rows.staffing.length) {
+  const { rows, absent } = await withSheet(config, t, id, SHEET_LABEL.discipline, () => readTabs(t, id, ["staffing", "areas", "project-types"]));
+  // project-types may not exist yet: the survey then just offers no types.
+  if (absent.some((tab) => tab !== "project-types") || !rows.staffing.length) {
     throw new Error("The discipline sheet's staffing tab is empty: paste the ds-staffing snapshot into it first (see Set up live sheets).");
   }
   status.replaceChildren("Generating the dummy data…");
   const data = generateDummyData(rows.staffing, readAreas(rows.areas));
   // The prototype pages read the area list from the prototype sheet, like everything else in prototype mode.
   data.areas = rows.areas;
+  // Types the discipline sheet leaves blank get guessed areas, so the prototype shows them working.
+  data["project-types"] = dummyProjectTypes(rows["project-types"], readAreas(rows.areas).names);
   status.replaceChildren("Writing to the prototype sheet…");
   await withSheet(config, t, config.sheets.prototype, SHEET_LABEL.prototype, () => replaceTabs(t, config.sheets.prototype, data));
   const total = Object.values(data).reduce((n, rows) => n + rows.length, 0);
@@ -68,6 +72,19 @@ async function addMissingAreas(config, t, areaRows, buckets) {
   const id = config.sheets.discipline;
   await withSheet(config, t, id, SHEET_LABEL.discipline, () => appendRows(t, id, "areas", AREA_HEADER, missing));
   return missing;
+}
+
+// An empty project-types tab gets the project types, their areas left to fill in. Returns the lines to report.
+async function seedProjectTypes(config, t, areaNames) {
+  const id = config.sheets.discipline;
+  let { rows } = await withSheet(config, t, id, SHEET_LABEL.discipline, () => readTabs(t, id, ["project-types"]));
+  const lines = [];
+  if (!readProjectTypes(rows["project-types"]).length) {
+    await withSheet(config, t, id, SHEET_LABEL.discipline, () => appendRows(t, id, "project-types", PROJECT_TYPE_HEADER, PROJECT_TYPE_SEED));
+    lines.push(`discipline sheet, project-types: added the ${PROJECT_TYPE_SEED.length} project types. Fill in the areas each suggests.`);
+    rows = { "project-types": PROJECT_TYPE_SEED };
+  }
+  return [...lines, ...projectTypeIssues(rows["project-types"], areaNames).map((issue) => `discipline sheet, project-types: ${issue}`)];
 }
 
 // The area list from the discipline sheet's areas tab: its rows, and as readAreas gives it.
@@ -140,6 +157,7 @@ async function setUpLiveSheets(config, t) {
   const added = await addMissingAreas(config, t, areaRows, buckets);
   if (added.length) lines.push(`discipline sheet, areas: added from the buckets: ${added.map((r) => r.area).join(", ")}. Fill in their examples there.`);
   lines.push(...areaIssues([...areaRows, ...added]).map((issue) => `discipline sheet, areas: ${issue}`));
+  lines.push(...(await seedProjectTypes(config, t, [...areaRows, ...added].map((r) => r.area).filter(Boolean))));
   const bare = bucketsWithoutExamples(topAreas(buckets, catalogue.defaultBuckets), examples);
   if (bare.length) lines.push(`discipline sheet, bucket-examples: buckets without all four examples, shown with generic ones in the survey: ${bare.join(", ")}. Fill them in there, or Ask Gemini again.`);
   // Google lets nobody approve an import through the API: it takes one click in each importing sheet.

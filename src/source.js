@@ -24,9 +24,10 @@ const LIVE = {
   "bucket-history": ["aggregate", "bucket-history"],
   areas: ["aggregate", "areas"],
   "bucket-examples": ["aggregate", "bucket-examples"],
+  "project-types": ["aggregate", "project-types"],
 };
 // Datasets a page can do without: the buckets tab exists only once a grouping has been applied.
-const OPTIONAL = new Set(["buckets", "bucket-history", "areas", "bucket-examples"]);
+const OPTIONAL = new Set(["buckets", "bucket-history", "areas", "bucket-examples", "project-types"]);
 const MODE_KEY = "data-mode";
 const LABEL = { prototype: "Prototype data", live: "Live data", unconfigured: "Not set up" };
 
