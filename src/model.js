@@ -18,6 +18,22 @@ export const PEOPLE = { 1: 1, 2: 2, 3: 3, 5: 5 };
 //   adequate  yellow when 1 person is needed (no redundancy), green otherwise
 //   over      always blue
 export const COVERAGE = ["critical", "under", "adequate", "over"];
+
+// Several rows can answer one working method for one team and expertise, as when a regrouping puts two of its
+// earlier sections in one bucket. Their coverage is the worst among them, so no gap is hidden by row order.
+export function worstCoverage(rows) {
+  const ranks = rows.map((r) => COVERAGE.indexOf(r.coverage)).filter((i) => i >= 0);
+  return ranks.length ? COVERAGE[Math.min(...ranks)] : null;
+}
+
+// Those rows as the one earlier answer the survey shows: people added up, rounded up to the next option (at most
+// the largest), so the team is never shown asking for less than before; the worst coverage; the first support.
+export function combinedAnswer(rows) {
+  const options = Object.keys(PEOPLE).map(Number);
+  const total = sum(rows.map((r) => PEOPLE[r.people] ?? 0));
+  const people = total ? String(options.find((n) => n >= total) ?? options.at(-1)) : rows[0]?.people ?? "";
+  return { people, coverage: worstCoverage(rows), support: rows.find((r) => r.support)?.support ?? "" };
+}
 export function rowStatus(coverage, people) {
   if (coverage === "critical") return "short";
   if (coverage === "under") return people <= 2 ? "strained" : "fragile";
@@ -218,7 +234,7 @@ function readTeams(demandRows, ratingsOf, isFresh) {
   const notes = [], levelNotes = [];
   for (const [team, rows] of groupBy(demandRows, (r) => r.team)) {
     const demand = demandByLevel(rows);
-    const rowAt = Object.fromEntries(LEVELS.map((l) => [l, atLevel(rows, l).find((r) => r.coverage)?.coverage ?? null]));
+    const rowAt = Object.fromEntries(LEVELS.map((l) => [l, worstCoverage(atLevel(rows, l))]));
     const fresh = isFresh(team);
     const cover = fresh ? assessedCoverage(demand, ratingsOf(team)) : null;
     for (const l of LEVELS.filter((l) => demand[l])) {

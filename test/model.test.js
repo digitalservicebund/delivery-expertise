@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { parseCsv, toCsv } from "../src/csv.js";
-import { buildModel, status, change, supplyAsOf, assessedCoverage, assessedScore, projectStatus, peopleStatus, rowStatus, TECH_LEAD, PEOPLE_LEAD, DOMAIN, reconciledStatus } from "../src/model.js";
+import { buildModel, status, change, supplyAsOf, assessedCoverage, assessedScore, projectStatus, peopleStatus, rowStatus, worstCoverage, combinedAnswer, TECH_LEAD, PEOPLE_LEAD, DOMAIN, reconciledStatus } from "../src/model.js";
 
 test("csv round-trips quoted fields", () => {
   const rows = [{ a: 'x, "y"', b: "1" }];
@@ -309,4 +309,25 @@ test("reconciled status: project as baseline, ratings where no project answered 
   assert.equal(reconciledStatus(l("covered", "short")), "covered"); // nor invent one
   assert.equal(reconciledStatus(l("covered", "surplus")), "surplus"); // over-coverage bleeds over
   assert.equal(reconciledStatus(l(null, "short")), "short"); // no project answer
+});
+
+test("rows that land in one bucket take the worst coverage among them, whatever their order", () => {
+  assert.equal(worstCoverage([{ coverage: "adequate" }, { coverage: "" }, { coverage: "critical" }, { coverage: "under" }]), "critical");
+  assert.equal(worstCoverage([{ coverage: "over" }, { coverage: "adequate" }]), "adequate");
+  assert.equal(worstCoverage([{}]), null);
+});
+
+test("several earlier answers for one working method combine into one the survey can show", () => {
+  const rows = [{ people: "2", coverage: "adequate", support: "" }, { people: "2", coverage: "under", support: "cop" }];
+  // 4 people isn't an option: rounded up to the next one, so the team isn't shown asking for less than before.
+  assert.deepEqual(combinedAnswer(rows), { people: "5", coverage: "under", support: "cop" });
+  assert.deepEqual(combinedAnswer([{ people: "3", coverage: "", support: "" }, { people: "5" }]), { people: "5", coverage: null, support: "" });
+  assert.deepEqual(combinedAnswer([{ people: "1", coverage: "over" }]), { people: "1", coverage: "over", support: "" });
+});
+
+test("a team's coverage at a level is its worst answer there, not the first row's", () => {
+  // Two sections that now fall in one bucket: their people add up, and the critical one isn't hidden.
+  const m = buildModel({ ...empty, demand: [ask("operative", "1", "adequate"), ask("operative", "2", "critical")] });
+  const [team] = m.expertise[0].current.levels[0].teams;
+  assert.deepEqual([team.demand, team.coverage, team.status], [3, "critical", "short"]);
 });

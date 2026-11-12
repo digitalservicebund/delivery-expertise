@@ -11,7 +11,7 @@ import { relevance, matches } from "./cloud.js";
 import { COP, SUPPORT_KEY, readAreas } from "./areas.js";
 import { readProjectTypes, typesByArea, MAX_PROJECT_TYPES } from "./projecttypes.js";
 import { effectiveBuckets, suggestBuckets, demandAreas, surveySections, inBuckets, readExamples } from "./buckets.js";
-import { METHODS as METHOD_LEVEL, PEOPLE as PEOPLE_COUNT, LEVELS, supplyAsOf, assessedCoverage, WORKING_DAYS_PER_QUARTER, UTILISATION, BOOKABLE_DAYS_PER_QUARTER } from "./model.js";
+import { METHODS as METHOD_LEVEL, PEOPLE as PEOPLE_COUNT, LEVELS, supplyAsOf, assessedCoverage, combinedAnswer, WORKING_DAYS_PER_QUARTER, UTILISATION, BOOKABLE_DAYS_PER_QUARTER } from "./model.js";
 
 const QUARTER = "2027-Q1";
 const METHODS = ["Operative", "Conceptual", "Strategic", "Comprehensive"];
@@ -229,7 +229,8 @@ const cap = (m) => m.charAt(0).toUpperCase() + m.slice(1);
 const areaKey = (r) => (r.expertise === "Domain expertise" ? "domain" : slug(r.expertise));
 function previousFor(team, key) {
   const rows = byBucket.demand.filter((r) => r.quarter === lastAnswered && r.team === team && areaKey(r) === key);
-  return { quarter: lastAnswered, ...Object.fromEntries(rows.map((r) => [cap(r.method), r])) };
+  // A regrouping can put several earlier rows in one bucket; each working method shows them combined.
+  return { quarter: lastAnswered, ...Object.fromEntries([...Map.groupBy(rows, (r) => cap(r.method))].map(([m, rs]) => [m, combinedAnswer(rs)])) };
 }
 // Recorded person-days to the nearest people option. Under half a person counts as nothing.
 function hintFor(team, key) {
