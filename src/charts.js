@@ -934,7 +934,7 @@ async function show() {
   if (ownView) saved.ratings = followBuckets(saved.ratings, topAreas(sets.buckets ?? [], defaultBuckets), sets["bucket-history"] ?? []);
   const loaded = Object.fromEntries(Object.entries(SOURCES).map(([k, name]) => [k, sets[name] ?? []]));
   const { demand, plan, assessments, activity } = loaded;
-  Object.assign(loaded, inBuckets(mode === "live" ? { demand, plan } : { demand, plan, assessments, activity }, effectiveBuckets(sets.buckets ?? [], defaultBucketAreas), sets["bucket-history"] ?? []));
+  Object.assign(loaded, inBuckets(mode === "live" ? { demand, plan } : { demand, plan, assessments, activity }, effectiveBuckets(sets.buckets ?? [], defaultBucketAreas), sets["bucket-history"] ?? [], { other: true }));
   // Everything is drawn per person and team: without staffing there is nothing to draw. The own view needs none.
   if (!ownView && !loaded.staffing.length) {
     throw new Error(mode === "live" ? "The discipline sheet's staffing tab is empty: paste the ds-staffing snapshot into it." : "No staffing data.");

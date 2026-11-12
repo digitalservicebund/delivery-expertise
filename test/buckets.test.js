@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { compareBuckets, bucketPrompt, parseBuckets, readBuckets, bucketRows, areasToGroup, pending, topAreas, inBuckets, BUCKET_HEADER, HISTORY_HEADER, nextHistory, aliasesOf, renamedTo, inferHistory, effectiveBuckets, suggestBuckets, demandAreas, surveySections, EXAMPLE_HEADER, readExamples, bucketsWithoutExamples, exampleRows } from "../src/buckets.js";
+import { compareBuckets, bucketPrompt, parseBuckets, readBuckets, bucketRows, areasToGroup, pending, topAreas, inBuckets, BUCKET_HEADER, HISTORY_HEADER, nextHistory, aliasesOf, renamedTo, inferHistory, effectiveBuckets, suggestBuckets, demandAreas, areaDemand, OTHER, surveySections, EXAMPLE_HEADER, fixPrompt, readExamples, bucketsWithoutExamples, exampleRows } from "../src/buckets.js";
 import { liveLayout } from "../src/sheets.js";
 import { AREA_HEADER } from "../src/areas.js";
 import { CATALOGUE } from "./fixtures/areas.js";
@@ -116,7 +116,7 @@ test("new areas, moves, renames, splits and merges are reported against the curr
 
 test("the prompt for Gemini lists every area once, the current buckets, and the answer format", () => {
   const text = bucketPrompt(["CSS", "Frontend", "Rust"], [{ name: "Web", areas: ["CSS", "Frontend"] }]);
-  assert.match(text, /exactly 10 buckets/);
+  assert.match(text, /exactly 3 buckets/);
   assert.match(text, /^- Rust$/m);
   assert.match(text, /^Web: CSS, Frontend$/m);
   assert.match(text, /area \| bucket/);
@@ -276,4 +276,84 @@ test("examples are saved under the names the buckets end up with", () => {
   assert.deepEqual(exampleRows(result, proposed, new Map([["Frontend", ["a", "b", "c", "d"]]])), [
     { bucket: "Web", operative: "a", conceptual: "b", strategic: "c", comprehensive: "d" },
   ]);
+});
+
+test("demand per area is the latest quarter's people, split evenly across the areas a row names", () => {
+  const demand = [
+    { quarter: "2026-Q3", expertise: "Security", areas: "Security", people: "5" },
+    { quarter: "2026-Q4", expertise: "Security", areas: "Security; Compliance", people: "3" },
+    { quarter: "2026-Q4", expertise: "Security", areas: "Security; Compliance", people: "1" },
+    { quarter: "2026-Q4", expertise: "Rust", people: "2" },
+    { quarter: "2026-Q4", expertise: "Web", areas: "CSS", people: "platform" },
+    { quarter: "2026-Q4", expertise: "Domain expertise", domain: "Tax", people: "3" },
+  ];
+  assert.deepEqual(areaDemand(demand), new Map([["Security", 2], ["Compliance", 2], ["Rust", 2]]));
+  assert.deepEqual(areaDemand([]), new Map());
+});
+
+test("the prompt sizes buckets by demand when there is any", () => {
+  const text = bucketPrompt(["Mobile", "Security"], [], new Map([["Security", 3]]));
+  assert.match(text, /^- Security \(100%\)$/m);
+  assert.match(text, /^- Mobile \(0%\)$/m);
+  assert.match(text, /share of demand/);
+  assert.doesNotMatch(bucketPrompt(["Mobile"], []), /share of demand|%/);
+});
+
+test("survey answers follow their areas: a moved area takes its row to the bucket now holding most of them", () => {
+  const rows = [{ area: "Security", bucket: "Security" }, { area: "Compliance", bucket: "Compliance" }, { area: "Audits", bucket: "Compliance" }, { area: "Foo", bucket: "Web" }];
+  const demand = [
+    // Was "Security & compliance": two of its three areas are now in Compliance.
+    { expertise: "Security & compliance", areas: "Security; Compliance; Audits", people: "3" },
+    // Saved under a bucket that still exists, but its only area has since moved.
+    { expertise: "Security", areas: "Audits", people: "1" },
+    // A tie stays with the bucket it was saved under.
+    { expertise: "Security", areas: "Security; Compliance", people: "2" },
+    // An unplaced write-in, grouped since.
+    { expertise: "Foo", areas: "Foo", people: "1" },
+    // Areas in no bucket: falls back to the stored name.
+    { expertise: "Web", areas: "Unknown", people: "1" },
+  ];
+  const out = inBuckets({ demand }, rows);
+  assert.deepEqual(out.demand.map((r) => r.expertise), ["Compliance", "Compliance", "Security", "Web", "Web"]);
+  assert.deepEqual(out.demand.map((r) => r.people), ["3", "1", "2", "1", "1"]);
+});
+
+test("the prompt pins the bucket count: names first, numbered, then a count check", () => {
+  const areas = Array.from({ length: 12 }, (_, i) => `A${i}`);
+  const text = bucketPrompt(areas, []);
+  assert.match(text, /numbered 1 to 10/);
+  assert.match(text, /count them: exactly 10/i);
+  // Fewer areas than buckets: one bucket each, and the prompt says so.
+  assert.match(bucketPrompt(["A", "B"], []), /exactly 2 buckets/);
+});
+
+test("the numbered list of bucket names in an answer is ignored when it is read", () => {
+  const answer = "1. Web\n2. Systems\n\nCSS | Web\nRust | Systems\nWeb | a | b | c | d\nSystems | e | f | g | h";
+  assert.deepEqual(parseBuckets(answer, ["CSS", "Rust"], 2).errors, []);
+});
+
+test("a wrong answer gets a follow-up for the same Gemini chat, naming the buckets to merge or split", () => {
+  const groups = Array.from({ length: 12 }, (_, i) => ({ name: `B${i}`, areas: [`A${i}`] }));
+  const text = fixPrompt(["12 buckets: exactly 10, please"], groups, 10);
+  assert.match(text, /You used 12 buckets: B0, B1/);
+  assert.match(text, /Merge/);
+  assert.match(text, /exactly 10 buckets/);
+  assert.match(fixPrompt(["9 buckets: exactly 10, please"], groups.slice(0, 9), 10), /Split/);
+  assert.match(fixPrompt(["Missing: X"], groups.slice(0, 10), 10), /^- Missing: X$/m);
+});
+
+test("for the discipline view, write-ins in no bucket are counted together under one Other bucket", () => {
+  const rows = [{ area: "CSS", bucket: "Web" }];
+  const demand = [
+    { expertise: "Rust", areas: "Rust", people: "1" },
+    { expertise: "Elm", areas: "Elm", people: "2" },
+    { expertise: "Web", areas: "CSS", people: "1" },
+    { expertise: "Domain expertise", domain: "Tax", people: "1" },
+  ];
+  const named = (o) => inBuckets({ demand }, rows, [], o).demand.map((r) => r.expertise);
+  assert.deepEqual(named({ other: true }), [OTHER, OTHER, "Web", "Domain expertise"]);
+  // The survey keeps each write-in on its own, so its section shows last time's answers.
+  assert.deepEqual(named(), ["Rust", "Elm", "Web", "Domain expertise"]);
+  // Before any buckets, every area stands on its own.
+  assert.deepEqual(inBuckets({ demand }, [], [], { other: true }).demand, demand);
 });

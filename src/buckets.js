@@ -5,6 +5,9 @@
 
 
 export const BUCKET_COUNT = 10;
+// Where the discipline view counts demand for write-ins that are in no bucket yet. Not a real bucket: the IC form
+// never asks about it, so it has no supply, and it disappears once a regrouping places those write-ins.
+export const OTHER = "Other (not yet grouped)";
 export const BUCKET_HEADER = ["area", "bucket", "generated_at"];
 // Where every former bucket went: its closest match in the current buckets. IC answers are stored per bucket
 // name, so this keeps older answers counted after a regrouping.
@@ -68,18 +71,30 @@ export function topAreas(rows, standard) {
 // Prototype ratings and activity are per area as well, so they are passed in and mapped too; live supply already
 // comes per bucket and is left out.
 // history: the bucket-history tab, so rows naming an old bucket (such as a planned adjustment) follow it too.
-export function inBuckets(data, rows, history = []) {
+// other: put demand that fits no bucket (write-ins not grouped yet) in one OTHER bucket, so the discipline view ranks
+// them together rather than each on its own. The survey leaves it off: a write-in's section shows its own answers.
+export function inBuckets(data, rows, history = [], { other = false } = {}) {
   const bucketOf = new Map(rows.filter((r) => r.area && r.bucket).map((r) => [r.area, r.bucket]));
   if (!bucketOf.size) return data;
   const moved = renamedTo(history);
   const current = new Set(bucketOf.values());
   // A row naming a current bucket (survey answers are per bucket) keeps it; an area or former bucket follows.
   const to = (name) => (current.has(name) ? name : bucketOf.get(name) ?? moved.get(name) ?? name);
+  const placed = (name) => current.has(name) || bucketOf.has(name) || moved.has(name) || name === "Domain expertise";
+  // Survey answers name their areas, so they follow the areas: to the bucket now holding most of them, a tie
+  // staying where the row was saved. Rows that name no area in a bucket fall back to their stored name.
+  const toByAreas = (r) => {
+    const stored = to(r.expertise);
+    const listed = String(r.areas ?? "").split(";").map((a) => a.trim());
+    const buckets = listed.map((a) => bucketOf.get(a)).filter(Boolean);
+    if (buckets.length) return mostCommon(buckets, stored);
+    return other && !placed(r.expertise) ? OTHER : stored;
+  };
   const out = {};
   for (const [name, list] of Object.entries(data)) {
     out[name] = name === "plan"
       ? list.map((r) => (r.kind === "adjust" ? { ...r, subject: to(r.subject) } : r))
-      : list.map((r) => ({ ...r, expertise: to(r.expertise) }));
+      : list.map((r) => ({ ...r, expertise: name === "demand" ? toByAreas(r) : to(r.expertise) }));
   }
   return out;
 }
@@ -123,11 +138,13 @@ export function inferHistory(headers, bucketRows, history, defaults, at) {
   return { rows, unresolved };
 }
 
-// The most frequent value, ties going to the first seen; undefined for none.
-function mostCommon(values) {
+// The most frequent value, ties going to `preferred` when it is among them, else the first seen; undefined for none.
+function mostCommon(values, preferred) {
   const counts = new Map();
   for (const v of values) counts.set(v, (counts.get(v) ?? 0) + 1);
-  return [...counts].reduce((best, entry) => (!best || entry[1] > best[1] ? entry : best), null)?.[0];
+  const top = Math.max(0, ...counts.values());
+  if (preferred !== undefined && counts.get(preferred) === top) return preferred;
+  return [...counts].find(([, n]) => n === top)?.[0];
 }
 
 export const renamedTo =(history) => new Map(history.filter((r) => r.bucket && r.now).map((r) => [r.bucket, r.now]));
@@ -150,25 +167,74 @@ export function pending(currentRows, areas, now = new Date()) {
   return { ungrouped: areas.filter((a) => !grouped.has(a)), stale: age > STALE_DAYS, empty: !groups.length };
 }
 
+// People asked for per area in the latest survey round: what the buckets are sized by. A row naming several areas
+// splits its people evenly across them. Platform answers aren't a team's own demand, and domain expertise is no area.
+export function areaDemand(demand) {
+  const latest = demand.map((r) => r.quarter ?? "").sort().at(-1);
+  const out = new Map();
+  for (const r of demand.filter((r) => (r.quarter ?? "") === latest)) {
+    const people = Number(r.people);
+    const areas = demandAreas(r);
+    if (!Number.isFinite(people) || !areas.length) continue;
+    for (const a of areas) out.set(a, (out.get(a) ?? 0) + people / areas.length);
+  }
+  return out;
+}
+
+const percent = (n, total) => `${Math.round((100 * n) / total)}%`;
+
 // The grouping is proposed by Gemini, in the admin's own browser tab: the portal copies this prompt, the admin
 // pastes it into Gemini and pastes the answer back. Current buckets go in, so stable groups keep their names.
-export function bucketPrompt(areas, current) {
+// demand: from areaDemand. With any, each area carries its share, and buckets are sized by it, so a heavily
+// demanded field gets several buckets and fields nobody asks for share one, rather than each taking a slot.
+// Models drift off a stated count, so the prompt makes it hard to: the names come first as a numbered list, every
+// later line may use only those, and the answer ends with a count check. parseBuckets still enforces it.
+export function bucketPrompt(areas, current, demand = new Map(), count = Math.min(BUCKET_COUNT, areas.length)) {
+  const total = [...demand.values()].reduce((a, b) => a + b, 0);
   return [
-    `Group these areas of software engineering expertise into exactly ${BUCKET_COUNT} buckets of related skills, as an engineering discipline would staff and train for them. Some names are German.`,
+    `Group these areas of software engineering expertise into exactly ${count} buckets of related skills, as an engineering discipline would staff and train for them. Some names are German.`,
+    `The number of buckets is fixed at exactly ${count}: not ${count - 1}, not ${count + 1}. An answer with any other number is unusable.`,
     "Every area goes in exactly one bucket, and no bucket is empty. Name each bucket after its most typical area, or keep a current bucket's name where the bucket still fits.",
+    ...(total ? [
+      "Each area shows its share of demand: the people projects asked for last quarter. Size the buckets by demand, so each holds a comparable share:",
+      "split a related field into several buckets where its areas are in high demand, and merge related fields into one bucket where demand for them is low.",
+      "Areas with little or no demand never get a bucket of their own; put them with their nearest related areas. Don't keep a current bucket only because it exists.",
+    ] : []),
     "",
     "Areas:",
-    ...areas.map((a) => `- ${a}`),
+    ...areas.map((a) => (total ? `- ${a} (${percent(demand.get(a) ?? 0, total)})` : `- ${a}`)),
     ...(current.length ? ["", "Current buckets:", ...current.map((g) => `${g.name}: ${g.areas.join(", ")}`)] : []),
     "",
-    "Answer in two parts. First, one line per area, formatted as: area | bucket",
-    "Use the area names exactly as listed.",
+    `Answer in three parts. First, the ${count} bucket names, numbered 1 to ${count}, one per line, as: 1. name`,
+    `Before going on, count them: exactly ${count}. With more, merge the two most closely related; with fewer, split the largest. Repeat until there are ${count}.`,
     "",
-    "Then, for each bucket, one line with an example of the work at each working method, formatted as:",
+    "Second, one line per area, formatted as: area | bucket",
+    "Use the area names exactly as listed, and only the bucket names from your numbered list, spelled the same.",
+    "",
+    "Third, for each of those buckets, one line with an example of the work at each working method, formatted as:",
     "bucket | operative | conceptual | strategic | comprehensive",
     "Operative: implementing, applying standard methods. Conceptual: planning, shaping and adapting methods. Strategic: setting guidelines, leading across teams. Comprehensive: shaping it across the wider government ecosystem.",
     "Keep each example short, starting with a verb, for example: Build components to the design system.",
     "No other text."
+  ].join("\n");
+}
+
+// A follow-up for the same Gemini chat when an answer can't be used (errors and groups: from parseBuckets). With
+// the wrong number of buckets it names the ones used, and whether to merge or split.
+export function fixPrompt(errors, groups, count) {
+  const n = groups.length;
+  return [
+    "Your answer can't be used:",
+    ...errors.map((e) => `- ${e}`),
+    ...(n === count ? [] : [
+      "",
+      `You used ${n} buckets: ${groups.map((g) => g.name).join(", ")}.`,
+      n > count
+        ? `Merge the most closely related ones until exactly ${count} remain.`
+        : `Split the largest ones until there are exactly ${count}.`,
+    ]),
+    "",
+    `Answer again in full, in the same three parts and format, with exactly ${count} buckets. Count them before answering.`,
   ].join("\n");
 }
 
