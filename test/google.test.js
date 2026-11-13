@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { retryUngranted, unpicked } from "../src/google.js";
+import { promptFor, retryUngranted, unpicked } from "../src/google.js";
 
 const notYet = Object.assign(new Error("not found"), { status: 404 });
 
@@ -27,4 +27,11 @@ test("files left unselected in the Picker are named", () => {
   const files = [{ id: "a", label: "A" }, { id: "b", label: "B" }];
   assert.deepEqual(unpicked(files, [{ id: "b" }]), [files[0]]);
   assert.deepEqual(unpicked(files, [{ id: "a" }, { id: "b" }]), []);
+});
+
+test("an expired token from this tab is renewed without the consent screen", () => {
+  const scopes = ["https://www.googleapis.com/auth/drive.file", "https://www.googleapis.com/auth/userinfo.email"];
+  assert.equal(promptFor({ token: "t", scopes, expires: 0 }), "");
+  assert.equal(promptFor(null), undefined);
+  assert.equal(promptFor({ token: "t", scopes: scopes.slice(0, 1), expires: 0 }), undefined);
 });

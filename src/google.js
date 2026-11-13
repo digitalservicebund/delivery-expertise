@@ -24,15 +24,22 @@ const loadGis = () => loadScript("https://accounts.google.com/gsi/client", () =>
 const loadPicker = () => loadScript("https://apis.google.com/js/api.js",
   () => new Promise((resolve) => window.gapi.load("picker", () => resolve(window.google.picker))));
 
-function stored() {
+function record() {
   try {
-    const t = JSON.parse(sessionStorage.getItem(STORE) ?? "null");
-    // Tokens from before the email scope was added lack it, so they are replaced by a new sign-in.
-    return t?.scopes.includes(SCOPE) && t.scopes.includes(EMAIL_SCOPE) && t.expires > Date.now() + 60_000 ? t.token : null;
+    return JSON.parse(sessionStorage.getItem(STORE) ?? "null");
   } catch {
     return null;
   }
 }
+// Tokens from before the email scope was added lack it, so they are replaced by a new sign-in.
+const fullScopes = (t) => Boolean(t?.scopes?.includes(SCOPE) && t.scopes.includes(EMAIL_SCOPE));
+function stored() {
+  const t = record();
+  return fullScopes(t) && t.expires > Date.now() + 60_000 ? t.token : null;
+}
+// Someone who already consented in this tab gets a new token without the consent screen:
+// Google's popup closes by itself while they're still signed in. Otherwise Google decides what to ask.
+export const promptFor = (previous) => (fullScopes(previous) ? "" : undefined);
 
 // Resolves with a token if one is stored. Otherwise needs a click: call it from a click handler,
 // or browsers block Google's popup.
@@ -40,6 +47,7 @@ export async function token(clientId) {
   const cached = stored();
   if (cached) return cached;
   const oauth2 = await loadGis();
+  const prompt = promptFor(record());
   return new Promise((resolve, reject) => {
     oauth2.initTokenClient({
       client_id: clientId,
@@ -52,7 +60,7 @@ export async function token(clientId) {
         resolve(res.access_token);
       },
       error_callback: (err) => reject(new Error(err.message ?? err.type)),
-    }).requestAccessToken();
+    }).requestAccessToken(prompt === undefined ? {} : { prompt });
   });
 }
 export const hasToken = () => Boolean(stored());
