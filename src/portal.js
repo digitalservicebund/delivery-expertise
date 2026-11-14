@@ -8,7 +8,7 @@ import { FORM_INFO, formItems, formRequests, branchRequest, supplyFormula } from
 import { readAreas, areaIssues, areasAfterGrouping } from "./areas.js";
 import { formRows } from "./prefill.js";
 import { PROJECT_TYPE_HEADER, PROJECT_TYPE_SEED, readProjectTypes, projectTypeIssues, dummyProjectTypes } from "./projecttypes.js";
-import { compareBuckets, bucketPrompt, parseBuckets, readBuckets, areasToGroup, pending, bucketNames, nextHistory, aliasesOf, inferHistory, bucketsWithoutExamples, exampleRows, areaDemand, fixPrompt, BUCKET_COUNT } from "./buckets.js";
+import { compareBuckets, bucketPrompt, parseBuckets, readBuckets, areasToGroup, pending, bucketNames, nextHistory, aliasesOf, inferHistory, bucketsWithoutExamples, exampleRows, areaDemand, areaCritical, bucketGaps, fixPrompt, BUCKET_COUNT } from "./buckets.js";
 
 const mode = await currentMode();
 bar(mode);
@@ -230,7 +230,7 @@ async function showBuckets(config, t) {
       ? `${ungrouped.length} area${ungrouped.length > 1 ? "s aren't" : " isn't"} in a bucket yet: ${ungrouped.join(", ")}. Ask Gemini to regroup.`
       : "The grouping is more than a quarter old. Ask Gemini to regroup, to see whether it still fits.";
   const { groups, generatedAt } = readBuckets(current);
-  bucketState.prompt = bucketPrompt(areas, groups, areaDemand(demand));
+  bucketState.prompt = bucketPrompt(areas, groups, areaDemand(demand), areaCritical(demand), bucketGaps(demand, history));
   askButton.disabled = false;
   document.getElementById("buckets-current").replaceChildren(...(groups.length
     ? [el("p", `Current buckets${generatedAt ? `, grouped ${generatedAt.slice(0, 10)}` : ""}:`), bucketList(groups)]

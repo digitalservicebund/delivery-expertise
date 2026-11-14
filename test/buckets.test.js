@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { compareBuckets, bucketPrompt, parseBuckets, readBuckets, areasToGroup, pending, bucketNames, inBuckets, BUCKET_HEADER, HISTORY_HEADER, nextHistory, aliasesOf, renamedTo, inferHistory, suggestBuckets, demandAreas, areaDemand, OTHER, surveySections, fixPrompt, readExamples, bucketsWithoutExamples, exampleRows } from "../src/buckets.js";
+import { compareBuckets, bucketPrompt, parseBuckets, readBuckets, areasToGroup, pending, bucketNames, inBuckets, BUCKET_HEADER, HISTORY_HEADER, nextHistory, aliasesOf, renamedTo, inferHistory, suggestBuckets, demandAreas, areaDemand, areaCritical, bucketGaps, OTHER, surveySections, fixPrompt, readExamples, bucketsWithoutExamples, exampleRows } from "../src/buckets.js";
 import { liveLayout } from "../src/sheets.js";
 import { AREA_HEADER } from "../src/areas.js";
 import { CATALOGUE } from "./fixtures/areas.js";
@@ -281,6 +281,52 @@ test("the prompt sizes buckets by demand when there is any", () => {
   assert.match(text, /^- Mobile \(0%\)$/m);
   assert.match(text, /share of demand/);
   assert.doesNotMatch(bucketPrompt(["Mobile"], []), /share of demand|%/);
+});
+
+test("critical gaps per bucket: teams answering critical coverage last quarter, following renamed buckets", () => {
+  const demand = [
+    { quarter: "2026-Q3", team: "A", expertise: "Web", coverage: "critical" },
+    { quarter: "2026-Q4", team: "A", expertise: "Web", method: "operative", coverage: "critical" },
+    { quarter: "2026-Q4", team: "A", expertise: "Web", method: "conceptual", coverage: "critical" },
+    { quarter: "2026-Q4", team: "B", expertise: "Frontend", coverage: "critical" },
+    { quarter: "2026-Q4", team: "C", expertise: "Backend", coverage: "under" },
+    { quarter: "2026-Q4", team: "C", expertise: "Domain expertise", domain: "Tax", coverage: "critical" },
+  ];
+  const history = [{ bucket: "Frontend", now: "Web" }];
+  assert.deepEqual(bucketGaps(demand, history), new Map([["Web", 2]]));
+  assert.deepEqual(bucketGaps([], []), new Map());
+});
+
+test("the prompt marks critically understaffed current buckets, to rename or break up only when the areas call for it", () => {
+  const current = [{ name: "Web", areas: ["CSS"] }, { name: "Backend", areas: ["Go"] }];
+  const text = bucketPrompt(["CSS", "Go"], current, new Map(), new Map(), new Map([["Web", 2]]));
+  assert.match(text, /^Web \(critically understaffed for 2 teams\): CSS$/m);
+  assert.match(text, /^Backend: Go$/m);
+  assert.match(text, /critically understaffed/);
+  assert.match(text, /still change/i);
+  assert.doesNotMatch(bucketPrompt(["CSS", "Go"], current), /understaffed/);
+});
+
+test("critical areas are the latest quarter's, counted once per team however many rows flag them", () => {
+  const demand = [
+    { quarter: "2026-Q3", team: "A", areas: "Rust", critical: "Rust" },
+    { quarter: "2026-Q4", team: "A", areas: "Security; Compliance", method: "operative", critical: "Security" },
+    { quarter: "2026-Q4", team: "A", areas: "Security; Compliance", method: "strategic", critical: "Security" },
+    { quarter: "2026-Q4", team: "B", areas: "Security; Compliance", critical: " Security ; Compliance" },
+    { quarter: "2026-Q4", team: "C", areas: "CSS", critical: "" },
+  ];
+  assert.deepEqual(areaCritical(demand), new Map([["Security", 2], ["Compliance", 1]]));
+  assert.deepEqual(areaCritical([]), new Map());
+});
+
+test("the prompt names the teams an area is critical for, and asks to keep such areas easy to find", () => {
+  const text = bucketPrompt(["Mobile", "Security"], [], new Map([["Security", 3]]), new Map([["Security", 2]]));
+  assert.match(text, /^- Security \(100%, critical for 2 teams\)$/m);
+  assert.match(text, /^- Mobile \(0%\)$/m);
+  assert.match(text, /critical/i);
+  // Without demand, critical areas are still named.
+  assert.match(bucketPrompt(["Mobile", "Security"], [], new Map(), new Map([["Security", 1]])), /^- Security \(critical for 1 team\)$/m);
+  assert.doesNotMatch(bucketPrompt(["Mobile"], []), /critical/i);
 });
 
 test("survey answers follow their areas: a moved area takes its row to the bucket now holding most of them", () => {

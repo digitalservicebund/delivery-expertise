@@ -181,16 +181,59 @@ export function areaDemand(demand) {
   return out;
 }
 
+// Teams that flagged each area critical in the latest survey round (the critical column), each team once per area.
+export function areaCritical(demand) {
+  const latest = demand.map((r) => r.quarter ?? "").sort().at(-1);
+  const teams = new Map();
+  for (const r of demand.filter((r) => (r.quarter ?? "") === latest)) {
+    for (const a of String(r.critical ?? "").split(";").map((x) => x.trim()).filter(Boolean)) {
+      (teams.get(a) ?? teams.set(a, new Set()).get(a)).add(r.team);
+    }
+  }
+  return new Map([...teams].map(([a, t]) => [a, t.size]));
+}
+
+// Teams that answered "critical" coverage for each bucket in the latest survey round: the gap blocks delivery.
+// Per bucket, not per area: coverage is answered per bucket. A bucket renamed since counts under its current name.
+export function bucketGaps(demand, history) {
+  const latest = demand.map((r) => r.quarter ?? "").sort().at(-1);
+  const moved = renamedTo(history);
+  const teams = new Map();
+  for (const r of demand.filter((r) => (r.quarter ?? "") === latest && r.coverage === "critical" && r.expertise !== "Domain expertise")) {
+    const bucket = moved.get(r.expertise) ?? r.expertise;
+    (teams.get(bucket) ?? teams.set(bucket, new Set()).get(bucket)).add(r.team);
+  }
+  return new Map([...teams].map(([b, t]) => [b, t.size]));
+}
+
 const percent = (n, total) => `${Math.round((100 * n) / total)}%`;
+// What an area's line in the prompt says about it: its share of demand, and the teams it is critical for.
+function areaNotes(area, demand, total, critical) {
+  const teams = critical.get(area) ?? 0;
+  const notes = [
+    ...(total ? [percent(demand.get(area) ?? 0, total)] : []),
+    ...(teams ? [`critical for ${teams} team${teams === 1 ? "" : "s"}`] : []),
+  ];
+  return notes.length ? `- ${area} (${notes.join(", ")})` : `- ${area}`;
+}
 
 // The grouping is proposed by Gemini, in the admin's own browser tab: the portal copies this prompt, the admin
 // pastes it into Gemini and pastes the answer back. Current buckets go in, so stable groups keep their names.
 // demand: from areaDemand. With any, each area carries its share, and buckets are sized by it, so a heavily
 // demanded field gets several buckets and fields nobody asks for share one, rather than each taking a slot.
+// critical: from areaCritical. Areas teams can't do without are named, so they aren't buried in an unrelated bucket.
+// gaps: from bucketGaps. Current buckets critically understaffed are marked, so Gemini weighs keeping them
+// recognisable: a weighting, not a lock, as the data may still call for a change.
 // Models drift off a stated count, so the prompt makes it hard to: the names come first as a numbered list, every
 // later line may use only those, and the answer ends with a count check. parseBuckets still enforces it.
-export function bucketPrompt(areas, current, demand = new Map(), count = Math.min(BUCKET_COUNT, areas.length)) {
+export function bucketPrompt(areas, current, demand = new Map(), critical = new Map(), gaps = new Map(), count = Math.min(BUCKET_COUNT, areas.length)) {
   const total = [...demand.values()].reduce((a, b) => a + b, 0);
+  const anyCritical = areas.some((a) => critical.get(a));
+  const anyGap = current.some((g) => gaps.get(g.name));
+  const gapNote = (name) => {
+    const n = gaps.get(name) ?? 0;
+    return n ? ` (critically understaffed for ${n} team${n === 1 ? "" : "s"})` : "";
+  };
   return [
     `Group these areas of software engineering expertise into exactly ${count} buckets of related skills, as an engineering discipline would staff and train for them. Some names are German.`,
     `The number of buckets is fixed at exactly ${count}: not ${count - 1}, not ${count + 1}. An answer with any other number is unusable.`,
@@ -200,10 +243,18 @@ export function bucketPrompt(areas, current, demand = new Map(), count = Math.mi
       "split a related field into several buckets where its areas are in high demand, and merge related fields into one bucket where demand for them is low.",
       "Areas with little or no demand never get a bucket of their own; put them with their nearest related areas. Don't keep a current bucket only because it exists.",
     ] : []),
+    ...(anyCritical ? [
+      "Some areas say how many project teams marked them critical: the team can't deliver without them. Whatever their demand, put each in a bucket of closely related areas whose name makes it easy to recognise, never in an unrelated catch-all bucket.",
+    ] : []),
     "",
     "Areas:",
-    ...areas.map((a) => (total ? `- ${a} (${percent(demand.get(a) ?? 0, total)})` : `- ${a}`)),
-    ...(current.length ? ["", "Current buckets:", ...current.map((g) => `${g.name}: ${g.areas.join(", ")}`)] : []),
+    ...areas.map((a) => areaNotes(a, demand, total, critical)),
+    ...(current.length ? ["", "Current buckets:", ...current.map((g) => `${g.name}${gapNote(g.name)}: ${g.areas.join(", ")}`)] : []),
+    ...(anyGap ? [
+      "",
+      "Buckets marked critically understaffed are ones project teams can't currently deliver without, and the discipline is staffing for them under those names.",
+      "Be somewhat more cautious about renaming, splitting or merging them: prefer keeping their name and core areas. You can still change them where the areas or demand clearly call for it.",
+    ] : []),
     "",
     `Answer in three parts. First, the ${count} bucket names, numbered 1 to ${count}, one per line, as: 1. name`,
     `Before going on, count them: exactly ${count}. With more, merge the two most closely related; with fewer, split the largest. Repeat until there are ${count}.`,
