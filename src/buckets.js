@@ -237,7 +237,7 @@ export function bucketPrompt(areas, current, demand = new Map(), critical = new 
   return [
     `Group these areas of software engineering expertise into exactly ${count} buckets of related skills, as an engineering discipline would staff and train for them. Some names are German.`,
     `The number of buckets is fixed at exactly ${count}: not ${count - 1}, not ${count + 1}. An answer with any other number is unusable.`,
-    "Every area goes in exactly one bucket, and no bucket is empty. Name each bucket after its most typical area, or keep a current bucket's name where the bucket still fits.",
+    "Every area goes in exactly one bucket, and no bucket is empty. Keep a current bucket's name, spelled exactly the same, wherever the bucket still fits: every name you change is a rename. Name new buckets after their most typical area.",
     ...(total ? [
       "Each area shows its share of demand: the people projects asked for last quarter. Size the buckets by demand, so each holds a comparable share:",
       "split a related field into several buckets where its areas are in high demand, and merge related fields into one bucket where demand for them is low.",
@@ -353,18 +353,16 @@ function mostly(areas, groups, nameOf = (g) => g.name) {
   return best?.name ?? null;
 }
 
-// Compares a proposed grouping with the current buckets. A proposed group matched to a current bucket keeps its
-// name while that name is still one of its areas, or isn't an area at all (named by hand); otherwise it takes the
-// proposed name. Returns the buckets as they would be written, and what changed.
+// Compares a proposed grouping with the current buckets. Each proposed group is matched to the current bucket it
+// overlaps most, and takes the proposed name: the prompt asks Gemini to keep a current name where the bucket still
+// fits, so a different name is a deliberate rename. Returns the buckets as they would be written, and what changed.
 export function compareBuckets(current, proposed) {
   const of = match(current, proposed);
-  const allAreas = new Set(proposed.flatMap((g) => g.areas));
   const used = new Set();
   const buckets = proposed.map((p, i) => {
     const previous = of.has(i) ? current[of.get(i)].name : null;
-    const keep = previous !== null && (p.areas.includes(previous) || !allAreas.has(previous));
-    let name = keep ? previous : p.name;
-    for (let k = 2; used.has(name); k++) name = `${keep ? previous : p.name} (${k})`;
+    let name = p.name;
+    for (let k = 2; used.has(name); k++) name = `${p.name} (${k})`;
     used.add(name);
     return { name, previous, areas: p.areas };
   });

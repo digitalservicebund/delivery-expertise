@@ -74,10 +74,17 @@ test("admins are prompted for ungrouped areas and after a quarter", () => {
 
 test("an unchanged grouping keeps every name and reports nothing", () => {
   const current = [{ name: "Web", areas: ["CSS", "Frontend"] }];
-  const result = compareBuckets(current, [{ name: "Frontend", areas: ["CSS", "Frontend"] }]);
+  const result = compareBuckets(current, [{ name: "Web", areas: ["CSS", "Frontend"] }]);
   assert.deepEqual(result.buckets, [{ name: "Web", previous: "Web", areas: ["CSS", "Frontend"] }]);
   assert.equal(result.unchanged, true);
   assert.deepEqual([result.moves, result.added, result.renamed, result.created, result.removed], [[], [], [], [], []]);
+});
+
+test("Gemini's names are the buckets' names: a new name for the same areas is a rename", () => {
+  const result = compareBuckets([{ name: "Web", areas: ["CSS", "Frontend"] }], [{ name: "Frontend", areas: ["CSS", "Frontend"] }]);
+  assert.deepEqual(result.buckets, [{ name: "Frontend", previous: "Web", areas: ["CSS", "Frontend"] }]);
+  assert.deepEqual(result.renamed, [{ from: "Web", to: "Frontend" }]);
+  assert.equal(result.unchanged, false);
 });
 
 test("new areas, moves, renames, splits and merges are reported against the current buckets", () => {
@@ -88,10 +95,10 @@ test("new areas, moves, renames, splits and merges are reported against the curr
     { name: "Infra", areas: ["Terraform"] },
   ];
   const proposed = [
-    { name: "Databases", areas: ["APIs", "Databases"] }, // most of Backend, but without the Backend area: renamed
+    { name: "Databases", areas: ["APIs", "Databases"] }, // most of Backend, under a new name: renamed
     { name: "Rust", areas: ["Backend", "Rust"] }, // split off Backend
-    { name: "Frontend", areas: ["CSS", "Frontend"] }, // Web, named by hand, keeps its name
-    { name: "CI", areas: ["CI", "Kubernetes", "Terraform"] }, // Ops absorbs Infra
+    { name: "Web", areas: ["CSS", "Frontend"] }, // kept as it was
+    { name: "Ops", areas: ["CI", "Kubernetes", "Terraform"] }, // Ops absorbs Infra
   ];
   const result = compareBuckets(current, proposed);
   assert.equal(result.unchanged, false);
@@ -151,8 +158,8 @@ test("applying a regrouping records where each old bucket went, so older answers
   const result = compareBuckets(current, [
     { name: "Databases", areas: ["APIs", "Databases"] },
     { name: "Rust", areas: ["Backend", "Rust"] },
-    { name: "Frontend", areas: ["CSS", "Frontend"] },
-    { name: "CI", areas: ["CI", "Kubernetes", "Terraform"] },
+    { name: "Web", areas: ["CSS", "Frontend"] },
+    { name: "Ops", areas: ["CI", "Kubernetes", "Terraform"] },
   ]);
   assert.deepEqual(HISTORY_HEADER, ["bucket", "now", "changed_at"]);
   // Backend was renamed Databases; Infra merged into Ops. Web and Ops kept their names.
@@ -167,7 +174,7 @@ test("history follows chains of changes and forgets names that are buckets again
   // Now Ops is merged into Platform, and Web, a new area, is a bucket of its own again.
   const result = compareBuckets(
     [{ name: "Ops", areas: ["CI"] }, { name: "Platform", areas: ["Helm", "Kubernetes"] }, { name: "Frontend", areas: ["CSS"] }],
-    [{ name: "Kubernetes", areas: ["CI", "Helm", "Kubernetes"] }, { name: "CSS", areas: ["CSS"] }, { name: "Web", areas: ["Web"] }],
+    [{ name: "Platform", areas: ["CI", "Helm", "Kubernetes"] }, { name: "Frontend", areas: ["CSS"] }, { name: "Web", areas: ["Web"] }],
   );
   assert.deepEqual(result.buckets.map((b) => b.name), ["Platform", "Frontend", "Web"]);
   assert.deepEqual(nextHistory(before, result, "T2"), [
@@ -258,7 +265,7 @@ test("examples are saved under the names the buckets end up with", () => {
   const proposed = [{ name: "Frontend", areas: ["CSS", "Frontend"] }];
   const result = compareBuckets([{ name: "Web", areas: ["CSS", "Frontend"] }], proposed);
   assert.deepEqual(exampleRows(result, proposed, new Map([["Frontend", ["a", "b", "c", "d"]]])), [
-    { bucket: "Web", operative: "a", conceptual: "b", strategic: "c", comprehensive: "d" },
+    { bucket: "Frontend", operative: "a", conceptual: "b", strategic: "c", comprehensive: "d" },
   ]);
 });
 
