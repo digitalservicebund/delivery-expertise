@@ -1,15 +1,17 @@
-// Project types: what kind of work a project does. The project survey asks for up to three before the word cloud,
+// Project types: what kind of work a project does. The project survey asks for up to five before the word cloud,
 // and each picks the areas of expertise it usually needs. The mapping lives in the discipline sheet's project-types
-// tab, one row per type: `project_type | areas`, the areas separated by semicolons or commas. An area can sit under several types.
-// Imported into the aggregate sheet like the areas tab. Pure, so it runs in tests.
-export const PROJECT_TYPE_HEADER = ["project_type", "areas"];
-export const MAX_PROJECT_TYPES = 3;
+// tab, one row per type: `project_type | areas | description`, the areas separated by semicolons or commas. An area
+// can sit under several types. The optional description (e.g. the type's German name and what it means) is shown
+// next to the type, as the English names alone confused people. Imported into the aggregate sheet like the areas
+// tab. Pure, so it runs in tests.
+export const PROJECT_TYPE_HEADER = ["project_type", "areas", "description"];
+export const MAX_PROJECT_TYPES = 5;
 // What Set up live sheets writes to an empty tab: the types, with their areas left for discipline heads to fill in.
 export const PROJECT_TYPE_SEED = [
   "Steering support", "Product development", "Enablement", "Implementation consulting", "Standards development",
   "Implementation", "Strategy support", "Regulatory support", "Coordination office", "Further development and operations",
   "Discovery", "Other",
-].map((project_type) => ({ project_type, areas: "" }));
+].map((project_type) => ({ project_type, areas: "", description: "" }));
 
 // Semicolons, commas or new lines: no area name has a comma, and commas are what people type.
 // Prototype only: a best guess at each type's areas, from the dummy data's area list (src/dummy.js). Load dummy data
@@ -36,22 +38,25 @@ export function dummyProjectTypes(rows, areaNames) {
   return base.map((r) => (split(r.areas).length ? r : {
     project_type: r.project_type,
     areas: (GUESSED_AREAS[r.project_type.trim()] ?? []).filter((a) => known.has(a.toLowerCase())).join("; "),
+    description: r.description ?? "",
   }));
 }
 
-const split =(s = "") => s.split(/[;,\n]/).map((a) => a.trim()).filter(Boolean);
+const split = (s = "") => s.split(/[;,\n]/).map((a) => a.trim()).filter(Boolean);
 
-// The tab as the survey uses it: [{ name, areas }], in the tab's order. A type named twice gets both rows' areas.
+// The tab as the survey uses it: [{ name, areas, description }], in the tab's order. A type named twice gets both
+// rows' areas and the first description given.
 export function readProjectTypes(rows) {
   const types = new Map();
   for (const r of rows) {
     const name = r.project_type?.trim();
     if (!name) continue;
-    const areas = types.get(name) ?? [];
-    for (const a of split(r.areas)) if (!areas.includes(a)) areas.push(a);
-    types.set(name, areas);
+    const type = types.get(name) ?? { name, areas: [], description: "" };
+    for (const a of split(r.areas)) if (!type.areas.includes(a)) type.areas.push(a);
+    type.description ||= r.description?.trim() ?? "";
+    types.set(name, type);
   }
-  return [...types].map(([name, areas]) => ({ name, areas }));
+  return [...types.values()];
 }
 
 // Which of the chosen types suggest each area: area name (lower case) -> type names, in the order they were chosen.

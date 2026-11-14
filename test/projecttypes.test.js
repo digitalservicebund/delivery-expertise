@@ -1,9 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { PROJECT_TYPE_HEADER, PROJECT_TYPE_SEED, readProjectTypes, typesByArea, projectTypeIssues, dummyProjectTypes } from "../src/projecttypes.js";
+import { PROJECT_TYPE_HEADER, PROJECT_TYPE_SEED, MAX_PROJECT_TYPES, readProjectTypes, typesByArea, projectTypeIssues, dummyProjectTypes } from "../src/projecttypes.js";
 
-test("the project-types tab has a type and its areas", () => {
-  assert.deepEqual(PROJECT_TYPE_HEADER, ["project_type", "areas"]);
+test("the project-types tab has a type, its areas and an optional description", () => {
+  assert.deepEqual(PROJECT_TYPE_HEADER, ["project_type", "areas", "description"]);
   assert.equal(PROJECT_TYPE_SEED.length, 12);
   assert.ok(PROJECT_TYPE_SEED.every((r) => r.areas === ""));
 });
@@ -16,9 +16,27 @@ test("types keep the tab's order; areas split on semicolons, commas or new lines
     { project_type: "Discovery", areas: "Prototyping, Service design" },
   ]);
   assert.deepEqual(types, [
-    { name: "Discovery", areas: ["User research", "Prototyping", "Service design"] },
-    { name: "Implementation", areas: ["Frontend development", "Backend development"] },
+    { name: "Discovery", areas: ["User research", "Prototyping", "Service design"], description: "" },
+    { name: "Implementation", areas: ["Frontend development", "Backend development"], description: "" },
   ]);
+});
+
+test("a type's description is the first one given, to explain what the type means", () => {
+  const types = readProjectTypes([
+    { project_type: "Discovery", areas: "Prototyping", description: "" },
+    { project_type: "Discovery", areas: "", description: " Explore a problem before building " },
+    { project_type: "Discovery", areas: "", description: "Ignored" },
+  ]);
+  assert.equal(types[0].description, "Explore a problem before building");
+});
+
+test("a lead can choose up to five project types", () => {
+  assert.equal(MAX_PROJECT_TYPES, 5);
+});
+
+test("the prototype keeps a blank type's description when it guesses its areas", () => {
+  const [discovery] = dummyProjectTypes([{ project_type: "Discovery", areas: "", description: "Explore first" }], ["Prototyping"]);
+  assert.deepEqual(discovery, { project_type: "Discovery", areas: "Prototyping", description: "Explore first" });
 });
 
 test("an area under several chosen types names each, in the order they were chosen", () => {
@@ -39,7 +57,7 @@ test("the prototype guesses areas for blank types, from the area list only, and 
   assert.equal(seeded.find((r) => r.project_type === "Discovery").areas, "Technical discovery; Prototyping");
   assert.equal(seeded.find((r) => r.project_type === "Other").areas, "");
   const kept = dummyProjectTypes([{ project_type: "Discovery", areas: "Search" }, { project_type: "Enablement", areas: "" }], ["Open source"]);
-  assert.deepEqual(kept, [{ project_type: "Discovery", areas: "Search" }, { project_type: "Enablement", areas: "Open source" }]);
+  assert.deepEqual(kept, [{ project_type: "Discovery", areas: "Search" }, { project_type: "Enablement", areas: "Open source", description: "" }]);
 });
 
 test("set-up reports an empty tab, types without areas and areas not on the list", () => {

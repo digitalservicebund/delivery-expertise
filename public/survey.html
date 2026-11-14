@@ -80,6 +80,19 @@
     label.nuance span { display: block; font-size: 0.85rem; color: var(--muted); margin-bottom: 0.2rem; }
     @media (max-width: 44rem) { div.nuance { grid-template-columns: 1fr; } }
     .page-link { margin: 0 0 0.5rem; font-size: 0.9rem; }
+    /* Zebra stripes, so a row's answers are easy to follow across the grid. */
+    tr.method:nth-child(even of .method) td:not(.was) { background: #f8f9fa; }
+    td .def { display: block; font-size: 0.7rem; color: var(--muted); line-height: 1.2; }
+    p.legend { font-size: 0.8rem; color: var(--muted); margin-top: 0.5rem; }
+    .types label .desc { color: var(--muted); font-size: 0.8rem; }
+    p.types-note, p.added-note { color: #137333; font-size: 0.9rem; margin: 0.5rem 0 0; }
+    p.types-note:empty, p.added-note:empty { display: none; }
+    .help { margin-top: 0.75rem; padding: 0.6rem 0.8rem; border: 1px solid var(--line); border-radius: 6px; }
+    .help label { font-weight: 500; cursor: pointer; }
+    .help p { margin: 0.2rem 0 0 1.6rem; font-size: 0.85rem; color: var(--muted); }
+    fieldset.critical { margin-top: 0.5rem; }
+    fieldset.critical legend { font-size: 0.85rem; margin: 0 0 0.2rem; }
+    fieldset.critical label { display: inline-flex; gap: 0.3rem; margin-right: 1rem; font-size: 0.9rem; cursor: pointer; }
     pre { overflow-x: auto; background: #f1f3f4; padding: 0.75rem; font-size: 0.8rem; }
   </style>
   <script type="module" src="src/survey.js"></script>
@@ -89,19 +102,25 @@
     <header>
       <p class="page-link"><a href="./">← All prototypes</a></p>
       <h1>Engineering expertise: project survey</h1>
-      <p>Every quarter, each team tells us what engineering work it needs and how the quarter looks with the people it has. It takes about ten minutes. We never ask about named people.</p>
-      <p>The answers show where the discipline is short or has more than it needs, where to grow people, and who could help whom. Marking a row "over" is how other teams get help, and how yours gets help next time. It starts a conversation with you. Nobody is moved without one.</p>
-      <h3>How to answer</h3>
-      <p><strong>First pick the areas your team needs.</strong> The questions are per bucket of related areas: each bucket you pick an area in gets one grid, so there is nothing to skip. Add a short note on what exactly you need in each, and a comment wherever the grid can't say it.</p>
-      <p><strong>How many people need to work this way?</strong> Count people, not time. The same person can count in several areas. Pick the closest of 1, 2, 3 or 5.</p>
-      <p><strong>Critical, under, adequate, over:</strong> for each working method you need, is it covered on your team today? Critical means the gap blocks delivery or breaches an obligation.</p>
-      <p><strong>Also from…</strong> Tick where you expect to draw on a team or community: the platform team, the legal and IT security team, or a community of practice. It is in addition to the people your team needs, not instead of them.</p>
-      <dl>
-        <dt>Operative</dt><dd>Implementing, applying standard methods, finding solutions, executing</dd>
-        <dt>Conceptual</dt><dd>Planning, coordinating, shaping and guiding; adapting methods to the situation</dd>
-        <dt>Strategic</dt><dd>Technically innovative and entrepreneurial with limited resources; creating guidelines, leading, looking ahead</dd>
-        <dt>Comprehensive</dt><dd>Strategic across the wider ecosystem, including trends and developments beyond the project</dd>
-      </dl>
+      <p>Once a quarter, tell us which engineering expertise your team needs next quarter, and how well your team covers it. About ten minutes. We never ask about named people.</p>
+      <p><strong>Why we ask:</strong> the answers show the discipline where engineering is short or has more than it needs, where to grow people, and who could help whom. Marking a row "over" starts a conversation with you. Nobody is moved without one.</p>
+      <details class="how">
+        <summary>How to answer</summary>
+        <ul>
+          <li><strong>Sign in</strong> with Google, then pick your team.</li>
+          <li><strong>Pick the areas your team might need</strong> next quarter. Your project types suggest some. If in doubt, pick it.</li>
+          <li><strong>Related areas share one set of questions</strong>, so picking more areas rarely means more to answer.</li>
+          <li><strong>People needed</strong> is a headcount: count heads, not time. A part-time person counts as one. The same person can count in several areas.</li>
+          <li><strong>Covered</strong> asks how your team stands today. Critical means the gap blocks delivery or breaches an obligation.</li>
+          <li><strong>Think about the whole next quarter.</strong> Count expertise you'll need for part of it, or only later in it. Use the comment to say so if it matters.</li>
+        </ul>
+        <dl>
+          <dt>Operative (level 3)</dt><dd>Implementing, applying standard methods, finding solutions, executing</dd>
+          <dt>Conceptual (level 4)</dt><dd>Planning, coordinating, shaping and guiding; adapting methods to the situation</dd>
+          <dt>Strategic (level 5)</dt><dd>Technically innovative and entrepreneurial with limited resources; creating guidelines, leading, looking ahead</dd>
+          <dt>Comprehensive (level 6)</dt><dd>Strategic across the wider ecosystem, including trends and developments beyond the project</dd>
+        </dl>
+      </details>
     </header>
 
     <section class="demo">
@@ -120,15 +139,18 @@
       </section>
       <section id="types-section" hidden>
         <h2 id="types-heading">What kind of project is it?</h2>
-        <p class="muted">Pick up to three. Each picks the areas such projects usually need in the cloud below, marked with its colour. Unpick any your team doesn't need.</p>
+        <p class="muted">Pick up to five. Each one picks, in the cloud below, the areas such projects usually need, marked with its colour. Unpick any your team won't need.</p>
         <div id="project-types" class="types" role="group" aria-labelledby="types-heading"></div>
+        <p id="types-note" class="types-note" aria-live="polite"></p>
       </section>
       <section>
-        <h2 id="pick-heading">Which areas does your team need?</h2>
-        <p class="muted">Pick every area your team needs next quarter. Bigger words are our best guess from your last answers, booked time and ratings. Can't find it? Type it and add it as a new area.</p>
-        <input id="area-search" type="search" placeholder="Search or add an area" aria-label="Search or add an area of expertise" autocomplete="off">
+        <h2 id="pick-heading">Which areas might your team need?</h2>
+        <p class="muted">If you think you <em>might</em> need an area next quarter, pick it. If in doubt, pick it. Bigger words are our best guess from your last answers, booked time and ratings.</p>
+        <p class="muted"><strong>Missing an area?</strong> Type it in the box and choose “Add”. You'll be asked which group it belongs to.</p>
+        <input id="area-search" type="search" placeholder="Search, or type a new area to add it" aria-label="Search or add an area of expertise" autocomplete="off">
         <div id="cloud" class="cloud" role="group" aria-labelledby="pick-heading"></div>
         <button id="add-area" type="button" class="secondary" hidden></button>
+        <p id="added-note" class="added-note" aria-live="polite"></p>
       </section>
       <div id="areas"></div>
       <section>

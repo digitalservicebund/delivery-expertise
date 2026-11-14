@@ -58,7 +58,10 @@ const STYLE = `
 .mode-bar { font: 13px/1.4 system-ui, sans-serif; padding: 0.4rem 1rem; background: #fef7e0; border-bottom: 1px solid #f9e2a2; color: #202124; }
 .mode-bar.live { background: #e6f4ea; border-color: #ceead6; }
 .mode-bar a { color: #1a73e8; }
-.mode-bar button { font: inherit; margin-left: 0.5rem; padding: 0.2rem 0.75rem; border: 1px solid #1a73e8; border-radius: 4px; background: #fff; color: #1a73e8; cursor: pointer; }`;
+.mode-bar button { font: inherit; margin-left: 0.5rem; padding: 0.2rem 0.75rem; border: 1px solid #1a73e8; border-radius: 4px; background: #fff; color: #1a73e8; cursor: pointer; }
+.mode-bar.signing-in { position: sticky; top: 0; z-index: 10; padding: 0.75rem 1rem; font-size: 15px; box-shadow: 0 1px 4px rgb(0 0 0 / 0.15); }
+.mode-bar.signing-in button { padding: 0.45rem 1.1rem; background: #1a73e8; color: #fff; font-weight: 600; }
+.mode-bar .sign-in-error { margin-left: 0.5rem; color: #b3261e; }`;
 export function bar(mode) {
   document.head.append(Object.assign(document.createElement("style"), { textContent: STYLE }));
   const el = document.createElement("div");
@@ -77,13 +80,26 @@ export function bar(mode) {
   return { el, status };
 }
 
-// Resolves with a token, showing a sign-in button first if there is none.
+// Resolves with a token, showing a sign-in button first if there is none. People missed the small button, so
+// until they sign in the bar stays at the top of the screen and the button stands out. A sign-in that fails
+// (a closed or blocked pop-up, a blocking extension) says so and leaves the button to try again.
 function signIn(clientId, ui) {
   if (hasToken()) return token(clientId);
-  return new Promise((resolve, reject) => {
-    const button = Object.assign(document.createElement("button"), { type: "button", textContent: "Sign in with Google to load data" });
-    ui.status.replaceChildren(button);
-    button.addEventListener("click", () => token(clientId).then((t) => (button.remove(), resolve(t)), reject));
+  return new Promise((resolve) => {
+    const button = Object.assign(document.createElement("button"), { type: "button", textContent: "Sign in with Google to start" });
+    const error = Object.assign(document.createElement("span"), { className: "sign-in-error" });
+    ui.el.classList.add("signing-in");
+    ui.status.replaceChildren(button, error);
+    button.addEventListener("click", () => {
+      error.textContent = "";
+      token(clientId).then((t) => {
+        ui.el.classList.remove("signing-in");
+        ui.status.replaceChildren();
+        resolve(t);
+      }, (err) => {
+        error.textContent = `Sign-in didn't finish (${err.message}). Allow pop-ups for this page, or try without browser extensions or in another browser.`;
+      });
+    });
   });
 }
 

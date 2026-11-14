@@ -18,6 +18,21 @@ const METHODS = ["Operative", "Conceptual", "Strategic", "Comprehensive"];
 const PEOPLE = [["", "Not needed"], ["1", "1 person"], ["2", "2 people"], ["3", "3 people"], ["5", "5 people"]];
 // Coverage per row: is this working method covered on the team today?
 const COVERAGE = [["critical", "Critical"], ["under", "Under"], ["adequate", "Adequate"], ["over", "Over"]];
+// Shown under each row's method, so nobody needs to scroll up to the definitions.
+const METHOD_GIST = {
+  Operative: "level 3: implementing, executing",
+  Conceptual: "level 4: planning, shaping the approach",
+  Strategic: "level 5: setting direction, leading",
+  Comprehensive: "level 6: across the wider ecosystem",
+};
+const METHOD_MEANING = {
+  Operative: "Implementing, applying standard methods, finding solutions, executing",
+  Conceptual: "Planning, coordinating, shaping and guiding; adapting methods to the situation",
+  Strategic: "Technically innovative and entrepreneurial with limited resources; creating guidelines, leading, looking ahead",
+  Comprehensive: "Strategic across the wider ecosystem, including trends and developments beyond the project",
+};
+const COVERAGE_LEGEND = "Covered today: critical, the gap blocks delivery or breaches an obligation. Under, you're short but can still deliver. "
+  + "Adequate, it's covered. Over, you have more than you need, so another team could get help.";
 // The domain section is prefilled from the project's domain, kept by the discipline head.
 const DOMAIN_EXAMPLES = {
   Legislation: ["Implement rules from legal texts correctly", "Model legal processes and their edge cases", "Own how the product interprets and tracks legal change", "Shape how legislation is made digital-ready across government"],
@@ -54,14 +69,14 @@ function areaSection({ id, name, expertise, domain = "", subject, support, examp
   const table = $("table");
   const head = $("tr", {}, $("th", {}, ""), ...PEOPLE.map(([, label]) => $("th", { class: "need" }, label)));
   head.append(...COVERAGE.map(([, label], i) => $("th", { class: i === 0 ? "cov coverage" : "cov" }, label)));
-  if (support) head.append($("th", { class: "support" }, `Also from ${support}`));
   const groups = $("tr", { class: "groups" }, $("th", {}, ""),
-    $("th", { colspan: PEOPLE.length, scope: "colgroup", class: "need" }, "People needed next quarter"),
+    $("th", { colspan: PEOPLE.length, scope: "colgroup", class: "need" }, "People needed next quarter (headcount)"),
     $("th", { colspan: COVERAGE.length, scope: "colgroup", class: "cov coverage" }, "Covered on your team today"));
-  if (support) groups.append($("th", { class: "support" }, ""));
-  table.append($("caption", { class: "muted", style: "text-align:left" }, `How many people on your team need to work this way in ${subject} next quarter, and how well is that covered today?`), groups, head);
+  table.append($("caption", { class: "muted", style: "text-align:left" },
+    `How many people on your team need to work this way in ${subject} next quarter, and how well is that covered today? `
+    + "Count heads, not time. If you'll need it for part of the quarter, count it."), groups, head);
   for (const method of METHODS) {
-    const row = $("tr", {}, $("td", {}, method));
+    const row = $("tr", { class: "method" }, $("td", { title: METHOD_MEANING[method] }, method, $("span", { class: "def" }, METHOD_GIST[method])));
     PEOPLE.forEach(([value, label], i) => {
       const input = $("input", { type: "radio", name: `${id}-${slug(method)}`, value, "aria-label": `${method}: ${label}` });
       const was = previous?.[method] ? previous[method].people === value : false;
@@ -79,16 +94,11 @@ function areaSection({ id, name, expertise, domain = "", subject, support, examp
       if (was) mark(cell, "was", true, `Your answer for ${quarterLabel(previous.quarter)}.`, quarterLabel(previous.quarter));
       row.append(cell);
     });
-    if (support) {
-      const input = $("input", { type: "checkbox", name: `${id}-${slug(method)}-support`, "aria-label": `${method}: also from ${support}` });
-      input.checked = Boolean(previous?.[method]?.support);
-      const cell = $("td", { class: "support" }, input);
-      if (input.checked) mark(cell, "was", true, `Your answer for ${quarterLabel(previous.quarter)}.`, quarterLabel(previous.quarter));
-      row.append(cell);
-    }
     table.append(row);
   }
-  section.append(table, nuance(id, subject));
+  section.append(table, $("p", { class: "legend" }, COVERAGE_LEGEND));
+  if (support) section.append(helpFrom(id, support, previous));
+  section.append(nuance(id, subject));
   if (hint) {
     const how = $("ul");
     section.append($("details", { class: "how" }, $("summary", {}, "How are suggestions calculated?"), how));
@@ -100,6 +110,32 @@ function areaSection({ id, name, expertise, domain = "", subject, support, examp
   return section;
 }
 
+// Support from outside the team, asked once per section rather than per working method: people didn't know
+// what a tick per level meant, or whether it meant someone joining the team.
+function helpFrom(id, support, previous) {
+  const input = $("input", { type: "checkbox", name: `${id}-support` });
+  input.checked = METHODS.some((m) => previous?.[m]?.support);
+  const label = $("label", {}, input, ` We also expect help from ${support}`);
+  if (input.checked) label.title = `Your answer for ${quarterLabel(previous.quarter)}.`;
+  return $("div", { class: "help" }, label,
+    $("p", {}, "Help from outside your team, such as advice, reviews or mentoring. It doesn't add to or replace the people counted above."));
+}
+
+// Which of the areas picked in a bucket the team can't do without: flagged per area, as the grid is per bucket.
+// Rebuilt as areas are picked and unpicked, keeping the ticks of areas still picked.
+function renderCritical(section, names, before = []) {
+  const ticked = new Set([...section.querySelectorAll("fieldset.critical input:checked")].map((i) => i.value));
+  const first = !section.querySelector("fieldset.critical");
+  section.querySelector("fieldset.critical")?.remove();
+  const box = $("fieldset", { class: "critical" }, $("legend", {}, "Any of these critical for your team? (optional)"),
+    ...names.map((name) => {
+      const input = $("input", { type: "checkbox", value: name });
+      input.checked = ticked.has(name) || (first && before.includes(name));
+      return $("label", {}, input, name);
+    }));
+  section.querySelector(".covers").after(box);
+}
+
 // Free text under each grid: what exactly within the area, and anything the grid can't say.
 function nuance(id, subject) {
   const field = (name, label, control) => $("label", { class: "nuance" }, $("span", {}, label), control);
@@ -107,7 +143,7 @@ function nuance(id, subject) {
     field("specifics", `What specifically within ${subject}?`,
       $("input", { type: "text", name: `${id}-specifics`, placeholder: "e.g. tools, frameworks, standards, sub-areas" })),
     field("comment", "Comment",
-      $("textarea", { name: `${id}-comment`, rows: "2", placeholder: "Nuance the grid can't capture: timing, uncertainty, who you expect to join or leave" })));
+      $("textarea", { name: `${id}-comment`, rows: "2", placeholder: "What you had in mind: which sub-project or scope, when in the quarter, how sure you are, who may join or leave" })));
 }
 
 // Coverage suggestion per needed working method, from the team's ratings combined with recorded work.
@@ -177,10 +213,14 @@ function rowsFor(form, team) {
     const { id, expertise, domain, picked: areasPicked = "" } = section.dataset;
     const specifics = form.elements[`${id}-specifics`].value.trim();
     const comment = form.elements[`${id}-comment`].value.trim();
+    const critical = [...section.querySelectorAll("fieldset.critical input:checked")].map((i) => i.value).join("; ");
+    // Support is asked once per section: it goes on every row the team needs people for. With none needed it
+    // still needs a row to live on, so it takes the operative one.
+    const support = form.elements[`${id}-support`]?.checked ?? false;
+    const needsAny = METHODS.some((m) => form.elements[`${id}-${slug(m)}`].value);
     for (const method of METHODS) {
       const people = form.elements[`${id}-${slug(method)}`].value;
-      const support = form.elements[`${id}-${slug(method)}-support`]?.checked ?? false;
-      if (!people && !support) continue;
+      if (!people && !(support && !needsAny && method === "Operative")) continue;
       rows.push({
         quarter: QUARTER,
         team,
@@ -196,6 +236,7 @@ function rowsFor(form, team) {
         notes,
         areas: areasPicked,
         project_types: chosenTypes.join("; "),
+        critical,
       });
     }
   }
@@ -232,6 +273,10 @@ function previousFor(team, key) {
   // A regrouping can put several earlier rows in one bucket; each working method shows them combined.
   return { quarter: lastAnswered, ...Object.fromEntries([...Map.groupBy(rows, (r) => cap(r.method))].map(([m, rs]) => [m, combinedAnswer(rs)])) };
 }
+// The areas the team flagged as critical in this bucket last time.
+const criticalBefore = (team, key) => byBucket.demand
+  .filter((r) => r.quarter === lastAnswered && r.team === team && areaKey(r) === key)
+  .flatMap((r) => (r.critical ?? "").split(";").map((a) => a.trim()).filter(Boolean));
 // Recorded person-days to the nearest people option. Under half a person counts as nothing.
 function hintFor(team, key) {
   const hint = { quarter: lastRecorded };
@@ -297,6 +342,7 @@ if (live) {
 const search = document.getElementById("area-search");
 const cloud = document.getElementById("cloud");
 const addButton = document.getElementById("add-area");
+const addedNote = document.getElementById("added-note");
 
 // Step 1 state: the areas on offer, the ones picked (in picking order) and their built sections, kept so
 // answers survive unpicking and re-picking. Reset whenever the team or demo state changes.
@@ -308,7 +354,8 @@ const built = new Map();
 // the order the types were chosen, so three at most need telling apart. autoPicked: areas a type picked that the
 // lead hasn't touched since; unchoosing the type unpicks them unless another chosen type also suggests them.
 const projectTypes = readProjectTypes(sets["project-types"] ?? []);
-const TYPE_COLOURS = ["#e8710a", "#0d9488", "#c026d3"];
+const TYPE_COLOURS = ["#e8710a", "#0d9488", "#c026d3", "#2563eb", "#65a30d"];
+const typesNote = document.getElementById("types-note");
 const typesBox = document.getElementById("project-types");
 document.getElementById("types-section").hidden = !projectTypes.length;
 let chosenTypes = [];
@@ -318,13 +365,14 @@ const dot = (type) => $("span", { class: "dot", style: `background:${TYPE_COLOUR
 
 function renderTypes() {
   const full = chosenTypes.length >= MAX_PROJECT_TYPES;
-  typesBox.replaceChildren(...projectTypes.map(({ name }) => {
+  typesBox.replaceChildren(...projectTypes.map(({ name, description }) => {
     const on = chosenTypes.includes(name);
     const input = $("input", { type: "checkbox", value: name });
     input.checked = on;
     input.disabled = full && !on;
     input.addEventListener("change", () => chooseType(name, input.checked));
-    return $("label", { class: full && !on ? "full" : "" }, input, name, ...(on ? [dot(name)] : []));
+    const desc = description ? [$("span", { class: "desc" }, `(${description})`)] : [];
+    return $("label", { class: full && !on ? "full" : "" }, input, name, ...desc, ...(on ? [dot(name)] : []));
   }));
   // A chosen type that suggests nothing in the cloud: its areas are blank, or named unlike the area list.
   const silent = chosenTypes.filter((t) => !catalogue.some((a) => typesOf(a).includes(t)));
@@ -333,16 +381,22 @@ function renderTypes() {
 
 function chooseType(name, on) {
   chosenTypes = on ? [...chosenTypes, name] : chosenTypes.filter((t) => t !== name);
+  // People didn't notice that a type picks areas, so say what it just did.
+  const added = [];
   for (const a of catalogue) {
     const suggested = typesOf(a).length > 0;
     if (suggested && !picked.includes(a.id)) {
       picked.push(a.id);
       autoPicked.add(a.id);
+      added.push(a.name);
     } else if (!suggested && autoPicked.has(a.id)) {
       picked = picked.filter((p) => p !== a.id);
       autoPicked.delete(a.id);
     }
   }
+  typesNote.textContent = on && added.length
+    ? `${name} picked ${added.length} area${added.length === 1 ? "" : "s"} for you below: ${added.join(", ")}. Unpick any you won't need.`
+    : "";
   renderTypes();
   renderCloud();
   renderPicked();
@@ -428,6 +482,7 @@ function addCustom() {
     if (!picked.includes(existing.id)) picked.push(existing.id);
     search.value = "";
     chooser.hidden = true;
+    addedNote.textContent = `Picked “${existing.name}”. Its questions are below.`;
     renderCloud();
     return renderPicked();
   }
@@ -438,6 +493,10 @@ function addCustom() {
     picked.push(area.id);
     search.value = "";
     chooser.hidden = true;
+    // Without this, the new area seemed to vanish: say where it went.
+    addedNote.textContent = bucket
+      ? `Added “${name}” to ${bucket}. It's picked in the cloud, and you'll find it in the ${bucket} questions below.`
+      : `Added “${name}” with questions of its own below. The discipline will group it with similar areas later.`;
     renderCloud();
     renderPicked();
   };
@@ -446,11 +505,12 @@ function addCustom() {
     button.addEventListener("click", () => place(bucket));
     return button;
   };
-  const others = $("select", { "aria-label": "Another bucket" }, $("option", { value: "" }, "Another bucket…"),
+  const others = $("select", { "aria-label": "Another group" }, $("option", { value: "" }, "Another group…"),
     ...bucketNames.filter((n) => !suggested.includes(n)).map((n) => $("option", { value: n }, n)));
   others.addEventListener("change", () => others.value && place(others.value));
   chooser.replaceChildren(
-    $("p", {}, suggested.length ? `Which bucket does “${name}” belong to? Closest by name first.` : `No bucket's name matches “${name}”. Which does it belong to?`),
+    $("p", {}, `${suggested.length ? `Which group does “${name}” belong to? Closest by name first.` : `No group's name matches “${name}”. Which does it belong to?`} `
+      + "Its questions are shared with that group's other areas. Not sure? Choose “None of these” and it gets questions of its own."),
     $("div", { class: "choices" }, ...suggested.map((n) => choice(n, n)), others, choice("None of these", null, "secondary")),
   );
   chooser.hidden = false;
@@ -480,6 +540,7 @@ function renderPicked() {
     section.dataset.picked = names.join("; ");
     section.querySelector(".covers")?.remove();
     section.querySelector("h2").after($("p", { class: "covers" }, `For what you picked: ${names.join(", ")}.`));
+    renderCritical(section, names, historical ? criticalBefore(team, slug(bucket)) : []);
     return section;
   });
   if (domain) {
@@ -492,7 +553,7 @@ function renderPicked() {
     nodes.push(built.get("domain"));
   }
   areas.replaceChildren(...nodes);
-  if (!nodes.length) areas.append($("section", { class: "muted" }, "Pick the areas your team needs above. Each bucket you pick an area in gets its own questions here."));
+  if (!nodes.length) areas.append($("section", { class: "muted" }, "Pick the areas your team might need above. Related areas share one set of questions, which appears here."));
 }
 
 function reset() {
@@ -512,6 +573,8 @@ function reset() {
   renderTypes();
   search.value = "";
   chooser.hidden = true;
+  typesNote.textContent = "";
+  addedNote.textContent = "";
   renderCloud();
   renderPicked();
 }

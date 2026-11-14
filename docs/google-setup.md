@@ -51,7 +51,7 @@ The portal's **Set up live sheets** button does the next three sections' tab wor
 One tab, `demand`, with this header row. The survey only ever appends rows. A team's latest submission for a quarter replaces its earlier ones, by `submitted_at`.
 
 ```
-quarter | team | expertise | domain | method | people | coverage | support | specifics | comment | submitted_by | submitted_at | notes
+quarter | team | expertise | domain | method | people | coverage | support | specifics | comment | submitted_by | submitted_at | notes | areas | project_types | critical
 ```
 
 Everyone with access can read and change every team's rows. That is accepted. Version history shows who changed what.
@@ -86,7 +86,7 @@ An `areas` tab holds the area list: `area | default_bucket | support`, one row p
 
 A `bucket-examples` tab holds one example of the work per working method for each bucket: `bucket | operative | conceptual | strategic | comprehensive`. The project survey shows them above each bucket's grid; a bucket without all four gets generic ones. **Ask Gemini** asks for them along with the grouping and **Apply** writes them; for the default buckets, fill them in here. **Set up live sheets** lists buckets that lack them.
 
-A `project-types` tab maps project types to the areas they usually need: `project_type | areas`, one row per type, the areas separated by semicolons or commas and named as on the `areas` tab (case doesn't matter). An area can be under several types. The project survey offers the types in this order, lets a lead choose up to three, and preselects their areas in the word cloud. **Set up live sheets** adds its header, fills an empty tab with the twelve project types (areas blank), and warns about types without areas and areas the `areas` tab lacks. **Load dummy data** copies it into the prototype sheet.
+A `project-types` tab maps project types to the areas they usually need: `project_type | areas | description`, one row per type, the areas separated by semicolons or commas and named as on the `areas` tab (case doesn't matter). An area can be under several types. The optional description, such as the type's German name, is shown next to the type. The project survey offers the types in this order, lets a lead choose up to five, and preselects their areas in the word cloud. **Set up live sheets** adds its header, fills an empty tab with the twelve project types (areas blank), and warns about types without areas and areas the `areas` tab lacks. **Load dummy data** copies it into the prototype sheet.
 
 A `buckets` tab holds the top areas: `area | bucket | generated_at`, one row per area. It is the source of truth for the IC form's grid and the supply counts, which ask and count per bucket. The portal's **Top areas** panel prompts discipline heads when areas are in no bucket or the grouping is over a quarter old, copies a prompt for Gemini (which they run in their own Gemini tab) that lists each area with its share of last quarter's demand and asks for buckets of comparable demand, so busy fields split and quiet ones merge, reads the pasted answer back (an unusable one, such as the wrong number of buckets, gets a follow-up to paste into the same Gemini chat), previews it against the current buckets and writes it on **Apply**. The app never calls Gemini itself. Rename a bucket by editing the `bucket` column; a renamed bucket gets a new response column in the IC form.
 
