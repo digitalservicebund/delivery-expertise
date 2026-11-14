@@ -1,10 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { AREA_HEADER, readAreas, areaIssues, areasAfterGrouping, COP } from "../src/areas.js";
+import { AREA_HEADER, readAreas, areaIssues, areasAfterGrouping, canonicalArea, canonicalDemand, likelyDuplicates, COP } from "../src/areas.js";
 import { AREA_ROWS } from "./fixtures/areas.js";
 
 test("the areas tab has the area, its bucket, the support it can draw on and when it was grouped", () => {
-  assert.deepEqual(AREA_HEADER, ["area", "bucket", "support", "grouped_at"]);
+  assert.deepEqual(AREA_HEADER, ["area", "bucket", "support", "grouped_at", "same_as", "family"]);
 });
 
 test("the areas tab gives the areas, their names, which bucket each is in and the buckets in order", () => {
@@ -17,7 +17,7 @@ test("the areas tab gives the areas, their names, which bucket each is in and th
 });
 
 test("an empty tab gives nothing: the sheet is the only source", () => {
-  assert.deepEqual(readAreas([]), { areas: [], names: [], buckets: [], bucketRows: [] });
+  assert.deepEqual(readAreas([]), { areas: [], names: [], buckets: [], bucketRows: [], aliases: new Map(), aliasesOf: new Map(), familyOf: new Map() });
 });
 
 test("rows edited in the sheet are read as they are; unknown support counts as the community of practice", () => {
@@ -59,10 +59,78 @@ test("applying a grouping sets each area's bucket and adds new areas, keeping ev
   ];
   const groups = [{ name: "Web", areas: ["React", "Vue"] }, { name: "Services", areas: ["Go"] }];
   assert.deepEqual(areasAfterGrouping(rows, groups, "T"), [
-    { area: "React", bucket: "Web", support: "cop", grouped_at: "T", notes: "keep me" },
-    { area: "Go", bucket: "Services", support: "platform", grouped_at: "T", notes: "" },
+    { area: "React", bucket: "Web", support: "cop", grouped_at: "T", notes: "keep me", same_as: "", family: "" },
+    { area: "Go", bucket: "Services", support: "platform", grouped_at: "T", notes: "", same_as: "", family: "" },
     // Left alone: the grouping never drops an area, so this only happens when it was edited in meanwhile.
-    { area: "Cobol", bucket: "Legacy", support: "cop", grouped_at: "old", notes: "not in the grouping" },
-    { area: "Vue", bucket: "Web", support: "cop", grouped_at: "T", notes: "" },
+    { area: "Cobol", bucket: "Legacy", support: "cop", grouped_at: "old", notes: "not in the grouping", same_as: "", family: "" },
+    { area: "Vue", bucket: "Web", support: "cop", grouped_at: "T", notes: "", same_as: "", family: "" },
+  ]);
+});
+
+test("an area can be another name for one on the list: same_as points to it, and it drops out of the list", () => {
+  const { names, bucketRows, aliases, aliasesOf } = readAreas([
+    { area: "Frontend development", bucket: "Web" },
+    { area: "front-end", bucket: "Web", same_as: "Frontend development" },
+    { area: "BundID", same_as: "BundID integration" },
+    { area: "BundID integration", bucket: "Identity" },
+    // Pointing at nothing on the list: kept as an area of its own.
+    { area: "Vue", bucket: "Web", same_as: "Nonexistent" },
+  ]);
+  assert.deepEqual(names, ["Frontend development", "BundID integration", "Vue"]);
+  assert.deepEqual(bucketRows.map((r) => r.area), ["Frontend development", "BundID integration", "Vue"]);
+  assert.equal(aliases.get("front-end"), "Frontend development");
+  assert.equal(aliases.get("bundid"), "BundID integration");
+  assert.deepEqual(aliasesOf.get("BundID integration"), ["BundID"]);
+});
+
+test("answers naming another name count for the area it stands for, once", () => {
+  const { aliases } = readAreas([{ area: "Frontend development", bucket: "Web" }, { area: "front-end", same_as: "Frontend development" }]);
+  assert.equal(canonicalArea(" Front-End ", aliases), "Frontend development");
+  assert.equal(canonicalArea("Rust", aliases), "Rust");
+  const rows = canonicalDemand([
+    { expertise: "Web", areas: "front-end; Frontend development; CSS", critical: "front-end" },
+    { expertise: "front-end", areas: "" },
+  ], aliases);
+  assert.deepEqual(rows, [
+    { expertise: "Web", areas: "Frontend development; CSS", critical: "Frontend development" },
+    { expertise: "Frontend development", areas: "" },
+  ]);
+});
+
+test("an area's family places it: with no bucket, it goes where most of its family is", () => {
+  const { familyOf, bucketRows } = readAreas([
+    { area: "React", bucket: "Web", family: "Web frontend" },
+    { area: "TypeScript", bucket: "Web", family: "Web frontend" },
+    { area: "Vue", bucket: "", family: "Web frontend" },
+    { area: "Kotlin", bucket: "", family: "JVM" },
+  ]);
+  assert.equal(familyOf.get("Vue"), "Web frontend");
+  assert.deepEqual(bucketRows.find((r) => r.area === "Vue"), { area: "Vue", bucket: "Web", generated_at: "", inferred: true });
+  // No family-mate in a bucket: still in none.
+  assert.equal(bucketRows.find((r) => r.area === "Kotlin"), undefined);
+});
+
+test("likely duplicates ignore case, punctuation and words like development or integration", () => {
+  assert.deepEqual(likelyDuplicates(["Frontend development", "front-end", "Front End", "BundID", "BundID integration", "Rust"]), [
+    ["Frontend development", "front-end"],
+    ["Frontend development", "Front End"],
+    ["BundID", "BundID integration"],
+  ]);
+});
+
+test("applying a grouping also writes other names and families, without blanking families it doesn't name", () => {
+  const rows = [
+    { area: "Frontend development", bucket: "Web", support: "cop", grouped_at: "", same_as: "", family: "Web frontend" },
+    { area: "front-end", bucket: "Web", support: "cop", grouped_at: "", same_as: "", family: "" },
+    { area: "Go", bucket: "Backend", support: "cop", grouped_at: "", same_as: "", family: "Go" },
+  ];
+  const groups = [{ name: "Web", areas: ["Frontend development", "React"] }, { name: "Services", areas: ["Go"] }];
+  const out = areasAfterGrouping(rows, groups, "T", { same: new Map([["front-end", "Frontend development"], ["frontend", "Frontend development"]]), families: new Map([["React", "Web frontend"]]) });
+  assert.deepEqual(out.map((r) => [r.area, r.bucket, r.same_as, r.family]), [
+    ["Frontend development", "Web", "", "Web frontend"],
+    ["front-end", "Web", "Frontend development", ""],
+    ["Go", "Services", "", "Go"],
+    ["React", "Web", "", "Web frontend"],
+    ["frontend", "Web", "Frontend development", ""],
   ]);
 });

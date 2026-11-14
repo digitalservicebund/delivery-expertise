@@ -5,10 +5,10 @@ import { bar, currentMode, loadConfig, DATA_TABS, SHEET_LABEL } from "./source.j
 import { token, hasToken, canEdit, readTabs, readHeader, replaceTabs, appendRows, setUpTabs, withSheet, grantAll, tabTitles, getForm, updateForm } from "./google.js";
 import { liveLayout } from "./sheets.js";
 import { FORM_INFO, formItems, formRequests, branchRequest, supplyFormula } from "./icform.js";
-import { readAreas, areaIssues, areasAfterGrouping } from "./areas.js";
+import { readAreas, areaIssues, areasAfterGrouping, canonicalDemand, likelyDuplicates } from "./areas.js";
 import { formRows } from "./prefill.js";
 import { PROJECT_TYPE_HEADER, PROJECT_TYPE_SEED, readProjectTypes, projectTypeIssues, dummyProjectTypes } from "./projecttypes.js";
-import { compareBuckets, bucketPrompt, parseBuckets, readBuckets, areasToGroup, pending, bucketNames, nextHistory, aliasesOf, inferHistory, bucketsWithoutExamples, exampleRows, areaDemand, areaCritical, bucketGaps, fixPrompt, BUCKET_COUNT } from "./buckets.js";
+import { compareBuckets, bucketPrompt, parseBuckets, readBuckets, areasToGroup, pending, bucketNames, nextHistory, aliasesOf, inferHistory, bucketsWithoutExamples, exampleRows, areaDemand, areaCritical, bucketGaps, splitFamilies, fixPrompt, BUCKET_COUNT } from "./buckets.js";
 
 const mode = await currentMode();
 bar(mode);
@@ -217,10 +217,12 @@ async function readDemand(config, t) {
 }
 
 async function showBuckets(config, t) {
-  const [{ history, areaRows, catalogue }, demand] = await Promise.all([readBucketTabs(config, t, bucketSheet()), readDemand(config, t)]);
+  const [{ history, areaRows, catalogue }, rawDemand] = await Promise.all([readBucketTabs(config, t, bucketSheet()), readDemand(config, t)]);
+  // Answers naming another name for an area count for that area, so other names are never grouped on their own.
+  const demand = canonicalDemand(rawDemand, catalogue.aliases);
   const current = catalogue.bucketRows;
   const areas = areasToGroup(demand, current, catalogue.names);
-  bucketState = { current, history, demand, areas, areaRows };
+  bucketState = { current, history, demand, areas, areaRows, catalogue };
   const { ungrouped, stale, empty } = pending(current, areas);
   const prompt = document.getElementById("buckets-prompt");
   prompt.hidden = !(empty || ungrouped.length || stale);
@@ -230,7 +232,8 @@ async function showBuckets(config, t) {
       ? `${ungrouped.length} area${ungrouped.length > 1 ? "s aren't" : " isn't"} in a bucket yet: ${ungrouped.join(", ")}. Ask Gemini to regroup.`
       : "The grouping is more than a quarter old. Ask Gemini to regroup, to see whether it still fits.";
   const { groups, generatedAt } = readBuckets(current);
-  bucketState.prompt = bucketPrompt(areas, groups, areaDemand(demand), areaCritical(demand), bucketGaps(demand, history));
+  bucketState.prompt = bucketPrompt(areas, groups, areaDemand(demand), areaCritical(demand), bucketGaps(demand, history),
+    { familyOf: catalogue.familyOf, duplicates: likelyDuplicates(areas) });
   askButton.disabled = false;
   document.getElementById("buckets-current").replaceChildren(...(groups.length
     ? [el("p", `Current buckets${generatedAt ? `, grouped ${generatedAt.slice(0, 10)}` : ""}:`), bucketList(groups)]
@@ -258,7 +261,7 @@ async function previewBuckets(config, t) {
   // Reading may have failed when the panel opened, say before a sheet was handed to the app: try again.
   if (!bucketState) await showBuckets(config, t);
   const { current, areas } = bucketState;
-  const { groups, errors, examples } = parseBuckets(answerBox.value, areas);
+  const { groups, errors, examples, same, families } = parseBuckets(answerBox.value, areas);
   if (errors.length) {
     applyButton.hidden = true;
     const fix = fixPrompt(errors, groups, Math.min(BUCKET_COUNT, areas.length));
@@ -268,17 +271,25 @@ async function previewBuckets(config, t) {
     return bucketStatus.replaceChildren("This answer can't be used as it is. A follow-up for Gemini is copied, or edit the answer here:");
   }
   const result = compareBuckets(readBuckets(current).groups, groups);
-  Object.assign(bucketState, { result, groups, examples });
+  Object.assign(bucketState, { result, groups, examples, same, families });
+  const { familyOf } = bucketState.catalogue;
+  const familyChanges = [...families].filter(([a, f]) => familyOf.get(a) !== f);
+  // Families the new grouping splits across buckets: allowed, but worth a look before applying.
+  const split = splitFamilies(result.buckets, new Map([...familyOf, ...families]));
   const changes = [
+    ...[...same].map(([alias, main]) => `Same as: ${alias} → ${main}`),
+    ...familyChanges.map(([a, f]) => `Family: ${a} → ${f}${familyOf.has(a) ? ` (was ${familyOf.get(a)})` : ""}`),
+    ...split.map((s) => `Family split across buckets: ${s.family} (${s.buckets.join(", ")})`),
     ...result.added.map((c) => `New area: ${c.area} → ${c.to}`),
     ...result.moves.map((c) => `Moves: ${c.area}, ${c.from} → ${c.to}`),
     ...result.renamed.map((c) => `Renamed: ${c.from} → ${c.to}`),
     ...result.created.map((c) => `New bucket: ${c.name}${c.splitFrom ? `, split from ${c.splitFrom}` : ""}`),
     ...result.removed.map((c) => `Bucket gone: ${c.name}${c.mergedInto ? `, merged into ${c.mergedInto}` : ""}`),
   ];
-  bucketStatus.replaceChildren(result.unchanged ? "Regrouping changes nothing." : `${changes.length} change${changes.length > 1 ? "s" : ""}.`);
-  applyButton.hidden = result.unchanged;
-  document.getElementById("buckets-proposed").replaceChildren(...(result.unchanged ? [] : [
+  const unchanged = result.unchanged && !same.size && !familyChanges.length;
+  bucketStatus.replaceChildren(unchanged ? "Regrouping changes nothing." : `${changes.length} change${changes.length > 1 ? "s" : ""}.`);
+  applyButton.hidden = unchanged;
+  document.getElementById("buckets-proposed").replaceChildren(...(unchanged ? [] : [
     listOf(changes), el("p", "The buckets after regrouping:"), bucketList(result.buckets),
   ]));
 }
@@ -287,11 +298,11 @@ async function applyBuckets(config, t) {
   const sheet = bucketSheet();
   const id = config.sheets[sheet];
   const at = new Date().toISOString();
-  const { result, history, groups, examples, areaRows } = bucketState;
+  const { result, history, groups, examples, areaRows, same, families } = bucketState;
   // Areas teams added that the grouping placed join the area list, with their bucket.
   const known = new Set(areaRows.map((r) => r.area));
   const added = result.buckets.flatMap((b) => b.areas).filter((a) => !known.has(a));
-  const tabs = { areas: areasAfterGrouping(areaRows, result.buckets, at), buckets: exampleRows(result, groups, examples), "bucket-history": nextHistory(history, result, at) };
+  const tabs = { areas: areasAfterGrouping(areaRows, result.buckets, at, { same, families }), buckets: exampleRows(result, groups, examples), "bucket-history": nextHistory(history, result, at) };
   await withSheet(config, t, id, SHEET_LABEL[sheet], () => replaceTabs(t, id, tabs));
   applyButton.hidden = true;
   answerBox.value = "";

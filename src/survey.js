@@ -8,7 +8,7 @@ import { whoAmI, appendRows, withSheet } from "./google.js";
 import { DEMAND_HEADER } from "./sheets.js";
 import { teamsOf, projectsByTeam } from "./teams.js";
 import { relevance, matches } from "./cloud.js";
-import { COP, SUPPORT_KEY, readAreas } from "./areas.js";
+import { COP, SUPPORT_KEY, readAreas, canonicalArea, canonicalDemand } from "./areas.js";
 import { readProjectTypes, typesByArea, MAX_PROJECT_TYPES } from "./projecttypes.js";
 import { suggestBuckets, demandAreas, surveySections, inBuckets, readExamples } from "./buckets.js";
 import { METHODS as METHOD_LEVEL, PEOPLE as PEOPLE_COUNT, LEVELS, supplyAsOf, assessedCoverage, combinedAnswer, WORKING_DAYS_PER_QUARTER, UTILISATION, BOOKABLE_DAYS_PER_QUARTER } from "./model.js";
@@ -250,9 +250,11 @@ const BUCKET_TABS = ["buckets", "bucket-history", "areas", "project-types"];
 const LIVE_TABS = [...DATA_TABS.filter((n) => n !== "staffing"), "teams", ...BUCKET_TABS];
 const session = await load((await currentMode()) === "live" ? LIVE_TABS : [...DATA_TABS, ...BUCKET_TABS]);
 const sets = session.data;
-const [staffing, plan, demand, activity, assessments] = ["staffing", "discipline-plan", "project-demand", "historical-activity", "expertise-assessments"].map((n) => sets[n] ?? []);
-// The area list from the areas tab, with the bucket each area is in.
+// The area list from the areas tab, with the bucket each area is in, other names and families.
 const catalogueAreas = readAreas(sets.areas ?? []);
+const [staffing, plan, rawDemand, activity, assessments] = ["staffing", "discipline-plan", "project-demand", "historical-activity", "expertise-assessments"].map((n) => sets[n] ?? []);
+// Earlier answers naming another name for an area count for that area.
+const demand = canonicalDemand(rawDemand, catalogueAreas.aliases);
 // Examples per working method, per bucket, from the buckets tab. A bucket without all four gets generic ones.
 const bucketExamples = readExamples(sets.buckets ?? []);
 const examplesFor = (bucket) => (bucketExamples.get(bucket)?.every(Boolean) ? bucketExamples.get(bucket) : GENERIC_CUSTOM);
@@ -405,7 +407,7 @@ function chooseType(name, on) {
 // project's domain. Each knows its bucket; a write-in another team placed keeps the bucket that team chose.
 function catalogueFor(team) {
   const domain = domainOf.get(projectOf.get(team));
-  const list = catalogueAreas.areas.map(([name, support]) => ({ id: slug(name), name, bucket: bucketOfArea.get(name) ?? null, support }));
+  const list = catalogueAreas.areas.map(([name, support]) => ({ id: slug(name), name, bucket: bucketOfArea.get(name) ?? null, support, aliases: catalogueAreas.aliasesOf.get(name) ?? [] }));
   if (domain) list.push({
     id: "domain", name: `Domain expertise: ${domain}`, domain, examples: DOMAIN_EXAMPLES[domain] ?? GENERIC_DOMAIN,
     note: "From your project's domain. If your team also works in another domain, add it.",
@@ -418,6 +420,8 @@ function catalogueFor(team) {
   }
   return list;
 }
+// An area is found by its name or any other name for it: searching "BundID" finds "BundID integration".
+const found = (area, query) => matches(area.name, query) || (area.aliases ?? []).some((n) => matches(n, query));
 const customArea = (name, bucket) => ({ id: `x-${slug(name)}`, name, bucket, support: COP, examples: GENERIC_CUSTOM, custom: true });
 
 // The best guess at what this team needs, from its last answers, booked work and ratings, then discipline-wide demand.
@@ -443,7 +447,7 @@ const weightKey = (a) => (a.id === "domain" ? "domain" : a.id.replace(/^x-/, "")
 function renderCloud() {
   const query = search.value;
   const weights = renderCloud.weights ?? {};
-  const shown = catalogue.filter((a) => matches(a.name, query));
+  const shown = catalogue.filter((a) => found(a, query));
   cloud.replaceChildren(...shown.map((a) => {
     const w = weights[weightKey(a)] ?? 0;
     const on = picked.includes(a.id);
@@ -454,7 +458,7 @@ function renderCloud() {
     return button;
   }));
   if (!shown.length) cloud.append($("p", { class: "muted" }, "No area matches. Add it as a new one."));
-  const exact = catalogue.some((a) => a.name.toLowerCase() === query.trim().toLowerCase());
+  const exact = catalogue.some((a) => a.name.toLowerCase() === canonicalArea(query, catalogueAreas.aliases).toLowerCase());
   addButton.hidden = !query.trim() || exact;
   addButton.textContent = `+ Add “${query.trim()}” as a new area`;
 }
@@ -476,7 +480,8 @@ addButton.after(chooser);
 function addCustom() {
   const name = search.value.trim();
   if (!name) return;
-  const existing = catalogue.find((a) => a.name.toLowerCase() === name.toLowerCase());
+  // Another name for an area on the list picks that area rather than adding a duplicate.
+  const existing = catalogue.find((a) => a.name.toLowerCase() === canonicalArea(name, catalogueAreas.aliases).toLowerCase());
   if (existing) {
     if (!picked.includes(existing.id)) picked.push(existing.id);
     search.value = "";
@@ -485,7 +490,7 @@ function addCustom() {
     renderCloud();
     return renderPicked();
   }
-  const suggested = suggestBuckets(name, bucketRows).slice(0, 3);
+  const suggested = suggestBuckets(name, bucketRows, catalogueAreas.familyOf).slice(0, 3);
   const place = (bucket) => {
     const area = customArea(name, bucket);
     catalogue.push(area);
@@ -582,7 +587,7 @@ search.addEventListener("input", renderCloud);
 search.addEventListener("keydown", (ev) => {
   if (ev.key !== "Enter") return;
   ev.preventDefault();
-  const shown = catalogue.filter((a) => matches(a.name, search.value));
+  const shown = catalogue.filter((a) => found(a, search.value));
   if (shown.length === 1 && search.value.trim()) {
     if (!picked.includes(shown[0].id)) toggle(shown[0].id);
     search.value = "";

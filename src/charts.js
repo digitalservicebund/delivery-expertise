@@ -4,7 +4,7 @@ import { load, currentMode, SHEET_LABEL } from "./source.js";
 import { withSheet, canEdit } from "./google.js";
 import { restoreAssessment } from "./selfassessment.js";
 import { ratingsToProfile, followBuckets } from "./prefill.js";
-import { readAreas } from "./areas.js";
+import { readAreas, canonicalDemand } from "./areas.js";
 import { inBuckets, bucketNames } from "./buckets.js";
 import { personaView, SIGNAL } from "./persona.js";
 import { buildModel, change, LEVELS, METHOD_NAME, personalRatings, reconciledStatus, DOMAIN } from "./model.js";
@@ -930,9 +930,11 @@ async function show() {
   }
   const { data: sets, mode } = session;
   // The engineer's saved answers follow any regrouping since: a former bucket's answer counts for where it went.
-  const { bucketRows } = readAreas(sets.areas ?? []);
+  const { bucketRows, aliases } = readAreas(sets.areas ?? []);
   if (ownView) saved.ratings = followBuckets(saved.ratings, bucketNames(sets.buckets ?? [], bucketRows), sets["bucket-history"] ?? []);
   const loaded = Object.fromEntries(Object.entries(SOURCES).map(([k, name]) => [k, sets[name] ?? []]));
+  // Answers naming another name for an area count for that area.
+  loaded.demand = canonicalDemand(loaded.demand, aliases);
   const { demand, plan, assessments, activity } = loaded;
   Object.assign(loaded, inBuckets(mode === "live" ? { demand, plan } : { demand, plan, assessments, activity }, bucketRows, sets["bucket-history"] ?? [], { other: true }));
   // Everything is drawn per person and team: without staffing there is nothing to draw. The own view needs none.

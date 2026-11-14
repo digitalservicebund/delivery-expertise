@@ -222,11 +222,15 @@ function areaNotes(area, demand, total, critical) {
 // demand: from areaDemand. With any, each area carries its share, and buckets are sized by it, so a heavily
 // demanded field gets several buckets and fields nobody asks for share one, rather than each taking a slot.
 // critical: from areaCritical. Areas teams can't do without are named, so they aren't buried in an unrelated bucket.
+// opts.familyOf: area -> family. Families are listed, to keep each in one bucket, and Gemini gives every area one.
+// opts.duplicates: likely pairs of names for the same area (likelyDuplicates in src/areas.js), for Gemini to confirm.
 // gaps: from bucketGaps. Current buckets critically understaffed are marked, so Gemini weighs keeping them
 // recognisable: a weighting, not a lock, as the data may still call for a change.
 // Models drift off a stated count, so the prompt makes it hard to: the names come first as a numbered list, every
 // later line may use only those, and the answer ends with a count check. parseBuckets still enforces it.
-export function bucketPrompt(areas, current, demand = new Map(), critical = new Map(), gaps = new Map(), count = Math.min(BUCKET_COUNT, areas.length)) {
+export function bucketPrompt(areas, current, demand = new Map(), critical = new Map(), gaps = new Map(), { familyOf = new Map(), duplicates = [] } = {}, count = Math.min(BUCKET_COUNT, areas.length)) {
+  const inList = new Set(areas);
+  const families = [...Map.groupBy([...familyOf].filter(([a]) => inList.has(a)), ([, f]) => f)].map(([f, pairs]) => `${f}: ${pairs.map(([a]) => a).join(", ")}`);
   const total = [...demand.values()].reduce((a, b) => a + b, 0);
   const anyCritical = areas.some((a) => critical.get(a));
   const anyGap = current.some((g) => gaps.get(g.name));
@@ -237,7 +241,7 @@ export function bucketPrompt(areas, current, demand = new Map(), critical = new 
   return [
     `Group these areas of software engineering expertise into exactly ${count} buckets of related skills, as an engineering discipline would staff and train for them. Some names are German.`,
     `The number of buckets is fixed at exactly ${count}: not ${count - 1}, not ${count + 1}. An answer with any other number is unusable.`,
-    "Every area goes in exactly one bucket, and no bucket is empty. Keep a current bucket's name, spelled exactly the same, wherever the bucket still fits: every name you change is a rename. Name new buckets after their most typical area.",
+    "Every area goes in exactly one bucket, except another name for an area (see below), and no bucket is empty. Keep a current bucket's name, spelled exactly the same, wherever the bucket still fits: every name you change is a rename. Name new buckets after their most typical area.",
     ...(total ? [
       "Each area shows its share of demand: the people projects asked for last quarter. Size the buckets by demand, so each holds a comparable share:",
       "split a related field into several buckets where its areas are in high demand, and merge related fields into one bucket where demand for them is low.",
@@ -250,13 +254,23 @@ export function bucketPrompt(areas, current, demand = new Map(), critical = new 
     "Areas:",
     ...areas.map((a) => areaNotes(a, demand, total, critical)),
     ...(current.length ? ["", "Current buckets:", ...current.map((g) => `${g.name}${gapNote(g.name)}: ${g.areas.join(", ")}`)] : []),
+    ...(families.length ? [
+      "",
+      "Families: closely related areas, finer than buckets. Keep each family in the same bucket, unless it is too big for one bucket by itself:",
+      ...families,
+    ] : []),
+    ...(duplicates.length ? [
+      "",
+      "These look like the same area under different names. Confirm the ones that are, and look for others:",
+      ...duplicates.map(([a, b]) => `${a} ~ ${b}`),
+    ] : []),
     ...(anyGap ? [
       "",
       "Buckets marked critically understaffed are ones project teams can't currently deliver without, and the discipline is staffing for them under those names.",
       "Be somewhat more cautious about renaming, splitting or merging them: prefer keeping their name and core areas. You can still change them where the areas or demand clearly call for it.",
     ] : []),
     "",
-    `Answer in three parts. First, the ${count} bucket names, numbered 1 to ${count}, one per line, as: 1. name`,
+    `Answer in five parts. First, the ${count} bucket names, numbered 1 to ${count}, one per line, as: 1. name`,
     `Before going on, count them: exactly ${count}. With more, merge the two most closely related; with fewer, split the largest. Repeat until there are ${count}.`,
     "",
     "Second, one line per area, formatted as: area | bucket",
@@ -266,6 +280,13 @@ export function bucketPrompt(areas, current, demand = new Map(), critical = new 
     "bucket | operative | conceptual | strategic | comprehensive",
     "Operative: implementing, applying standard methods. Conceptual: planning, shaping and adapting methods. Strategic: setting guidelines, leading across teams. Comprehensive: shaping it across the wider government ecosystem.",
     "Keep each example short, starting with a verb, for example: Build components to the design system.",
+    "",
+    "Fourth, one line for each area that is only another name for another area on the list (the same thing, spelled or worded differently, not merely related), formatted as:",
+    "same | other name | area",
+    "Such an other name gets no line in the second part. Leave this part empty if there are none.",
+    "",
+    "Fifth, one line per area giving its family: a short name for a few closely related areas, finer than a bucket, keeping the families above where they still fit. Formatted as:",
+    "family | area | family",
     "No other text."
   ].join("\n");
 }
@@ -285,7 +306,7 @@ export function fixPrompt(errors, groups, count) {
         : `Split the largest ones until there are exactly ${count}.`,
     ]),
     "",
-    `Answer again in full, in the same three parts and format, with exactly ${count} buckets. Count them before answering.`,
+    `Answer again in full, in the same five parts and format, with exactly ${count} buckets. Count them before answering.`,
   ].join("\n");
 }
 
@@ -299,8 +320,17 @@ export function parseBuckets(text, areas, count = Math.min(BUCKET_COUNT, areas.l
   const errors = [];
   const unknown = [];
   const examples = new Map();
+  const same = new Map();
+  const families = new Map();
+  const tagged = [];
   for (const line of text.split("\n")) {
     const cells = line.replace(/[*`]/g, "").trim().replace(/^\||\|$/g, "").split("|").map((c) => c.trim());
+    const tag = cells[0]?.toLowerCase();
+    if (cells.length === 3 && (tag === "same" || tag === "family") && cells[1] && cells[2]) {
+      // The format lines themselves ("same | other name | area") name no area, so they are skipped like headers.
+      if (canonical.has(cells[1].toLowerCase())) tagged.push([tag, canonical.get(cells[1].toLowerCase()), cells[2]]);
+      continue;
+    }
     if (cells.length === 5 && cells.every(Boolean) && cells[0].toLowerCase() !== "bucket" && !/^:?-+:?$/.test(cells[1])) {
       examples.set(cells[0].toLowerCase(), cells.slice(1));
       continue;
@@ -313,8 +343,20 @@ export function parseBuckets(text, areas, count = Math.min(BUCKET_COUNT, areas.l
     if (before && before !== cells[1]) errors.push(`${area} is in more than one bucket: ${before}, ${cells[1]}`);
     else bucketOf.set(area, cells[1]);
   }
+  // Other names: each must point to an area that is itself no other name. A valid one needs no bucket.
+  // One pointing at an area is spared the missing-bucket error even when invalid: its own error says what to fix.
+  const named = new Set(tagged.filter(([t]) => t === "same").map(([, a]) => a));
+  const pointsAtArea = new Set();
+  for (const [t, area, value] of tagged) {
+    if (t === "family") { families.set(area, value); continue; }
+    const main = canonical.get(value.toLowerCase());
+    if (main) pointsAtArea.add(area);
+    if (!main) errors.push(`Other name for something that isn't an area: ${area} → ${value}`);
+    else if (named.has(main)) errors.push(`Other name for another other name: ${area} → ${main}`);
+    else { same.set(area, main); bucketOf.delete(area); }
+  }
   if (unknown.length) errors.push(`Not one of the areas: ${unknown.join(", ")}`);
-  const missing = areas.filter((a) => !bucketOf.has(a));
+  const missing = areas.filter((a) => !bucketOf.has(a) && !pointsAtArea.has(a));
   if (missing.length) errors.push(`Missing: ${missing.join(", ")}`);
   const groups = readBuckets([...bucketOf].map(([area, bucket]) => ({ area, bucket }))).groups.sort((a, b) => byName(a.name, b.name));
   if (groups.length !== count) errors.push(`${groups.length} bucket${groups.length === 1 ? "" : "s"}: exactly ${count}, please`);
@@ -322,7 +364,7 @@ export function parseBuckets(text, areas, count = Math.min(BUCKET_COUNT, areas.l
   const byGroup = new Map(groups.filter((g) => examples.has(g.name.toLowerCase())).map((g) => [g.name, examples.get(g.name.toLowerCase())]));
   const noExamples = groups.map((g) => g.name).filter((n) => !byGroup.has(n));
   if (noExamples.length) errors.push(`No examples for: ${noExamples.join(", ")}`);
-  return { groups, errors, examples: byGroup };
+  return { groups, errors, examples: byGroup, same, families };
 }
 
 // Pairs each proposed group with the current bucket it overlaps most, largest overlaps first, one to one.
@@ -402,16 +444,31 @@ const shared = (a, b) => a.filter((w) => b.some((t) => t.startsWith(w) || w.star
 
 // Buckets a write-in may belong to, best first: the bucket of an area of that exact name, else every bucket whose
 // name or areas share words with it. The project lead confirms one; nothing is assigned silently.
-export function suggestBuckets(name, rows) {
+// familyOf: area -> family. Words matching a family's name count for the bucket most of the family is in, so
+// "Frontend testing" finds the bucket React and TypeScript ("Web frontend") are in.
+export function suggestBuckets(name, rows, familyOf = new Map()) {
   const exact = rows.find((r) => r.area.toLowerCase() === name.trim().toLowerCase());
   if (exact) return [exact.bucket];
   const typed = words(name);
   const score = new Map();
-  for (const r of rows) {
-    const s = Math.max(shared(typed, words(r.area)), shared(typed, words(r.bucket)));
-    if (s) score.set(r.bucket, Math.max(score.get(r.bucket) ?? 0, s));
+  const bump = (bucket, s) => s && score.set(bucket, Math.max(score.get(bucket) ?? 0, s));
+  for (const r of rows) bump(r.bucket, Math.max(shared(typed, words(r.area)), shared(typed, words(r.bucket))));
+  const bucketOf = new Map(rows.map((r) => [r.area, r.bucket]));
+  for (const [family, members] of Map.groupBy([...familyOf], ([, f]) => f)) {
+    const home = mostCommon(members.map(([a]) => bucketOf.get(a)).filter(Boolean));
+    if (home) bump(home, shared(typed, words(family)));
   }
   return [...score].sort((a, b) => b[1] - a[1]).map(([bucket]) => bucket);
+}
+
+// Families a grouping splits across buckets (groups: [{ name, areas }]), for the preview to point out.
+export function splitFamilies(groups, familyOf) {
+  const bucketsOf = new Map();
+  for (const g of groups) for (const a of g.areas) {
+    const f = familyOf.get(a);
+    if (f) bucketsOf.set(f, new Set([...(bucketsOf.get(f) ?? []), g.name]));
+  }
+  return [...bucketsOf].filter(([, b]) => b.size > 1).map(([family, b]) => ({ family, buckets: [...b].sort(byName) }));
 }
 
 // picked: [{ name, bucket }] in picking order, bucket null for a write-in that fits none. One section per bucket,

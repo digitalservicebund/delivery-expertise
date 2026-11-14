@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { compareBuckets, bucketPrompt, parseBuckets, readBuckets, areasToGroup, pending, bucketNames, inBuckets, BUCKET_HEADER, HISTORY_HEADER, nextHistory, aliasesOf, renamedTo, inferHistory, suggestBuckets, demandAreas, areaDemand, areaCritical, bucketGaps, OTHER, surveySections, fixPrompt, readExamples, bucketsWithoutExamples, exampleRows } from "../src/buckets.js";
+import { compareBuckets, bucketPrompt, parseBuckets, readBuckets, areasToGroup, pending, bucketNames, inBuckets, BUCKET_HEADER, HISTORY_HEADER, nextHistory, aliasesOf, renamedTo, inferHistory, suggestBuckets, demandAreas, areaDemand, areaCritical, bucketGaps, OTHER, surveySections, splitFamilies, fixPrompt, readExamples, bucketsWithoutExamples, exampleRows } from "../src/buckets.js";
 import { liveLayout } from "../src/sheets.js";
 import { AREA_HEADER } from "../src/areas.js";
 import { CATALOGUE } from "./fixtures/areas.js";
@@ -37,7 +37,7 @@ test("the discipline sheet gets a buckets tab listing the buckets with their exa
   assert.deepEqual(layout.discipline["bucket-history"], { header: HISTORY_HEADER });
   assert.match(layout.aggregate["bucket-history"].formula, /IMPORTRANGE\("D", "bucket-history!A:C"\)/);
   assert.deepEqual(layout.discipline.areas, { header: AREA_HEADER });
-  assert.match(layout.aggregate.areas.formula, /IMPORTRANGE\("D", "areas!A:D"\)/);
+  assert.match(layout.aggregate.areas.formula, /IMPORTRANGE\("D", "areas!A:F"\)/);
   assert.ok(!("bucket-examples" in layout.discipline) && !("bucket-examples" in layout.aggregate));
   assert.equal(layout.aggregate.buckets.formula, '=QUERY(IMPORTRANGE("D", "buckets!A:E"), "select Col1, Col2, Col3, Col4, Col5 where Col1 is not null", 1)');
 });
@@ -124,7 +124,8 @@ test("the prompt for Gemini lists every area once, the current buckets, and the 
 
 test("Gemini's answer is read leniently, but every area must be in exactly one of exactly 10 buckets", () => {
   const answer = "Here you go:\n```\narea | bucket\n| CSS | Web |\n**Frontend** | Web\nrust | Systems\n```\nWeb | a | b | c | d\nSystems | e | f | g | h";
-  const { examples, ...parsed } = parseBuckets(answer, ["CSS", "Frontend", "Rust"], 2);
+  const { examples, same, families, ...parsed } = parseBuckets(answer, ["CSS", "Frontend", "Rust"], 2);
+  assert.equal(same.size + families.size, 0);
   assert.equal(examples.size, 2);
   assert.deepEqual(parsed, {
     groups: [{ name: "Systems", areas: ["Rust"] }, { name: "Web", areas: ["CSS", "Frontend"] }],
@@ -393,4 +394,47 @@ test("for the discipline view, write-ins in no bucket are counted together under
   assert.deepEqual(named(), ["Rust", "Elm", "Web", "Domain expertise"]);
   // Before any buckets, every area stands on its own.
   assert.deepEqual(inBuckets({ demand }, [], [], { other: true }).demand, demand);
+});
+
+test("a write-in is placed by family too: words matching a family suggest the bucket most of it is in", () => {
+  const rows = [{ area: "React", bucket: "Web" }, { area: "TypeScript", bucket: "Web" }, { area: "Kotlin", bucket: "Backend" }];
+  const familyOf = new Map([["React", "Web frontend"], ["TypeScript", "Web frontend"], ["Kotlin", "JVM"]]);
+  assert.deepEqual(suggestBuckets("Frontend testing", rows, familyOf), ["Web"]);
+  assert.deepEqual(suggestBuckets("JVM tuning", rows, familyOf), ["Backend"]);
+  assert.deepEqual(suggestBuckets("JVM tuning", rows), []);
+});
+
+test("the prompt asks Gemini to keep families together, name other names for the same area, and give families", () => {
+  const familyOf = new Map([["React", "Web frontend"], ["TypeScript", "Web frontend"]]);
+  const text = bucketPrompt(["React", "TypeScript", "front-end", "Frontend development"], [], new Map(), new Map(), new Map(),
+    { familyOf, duplicates: [["Frontend development", "front-end"]] });
+  assert.match(text, /^Web frontend: React, TypeScript$/m);
+  assert.match(text, /same bucket/);
+  assert.match(text, /^Frontend development ~ front-end$/m);
+  assert.match(text, /^same \| other name \| area$/m);
+  assert.match(text, /^family \| area \| family$/m);
+  assert.doesNotMatch(bucketPrompt(["React"], []), /^Families/m);
+});
+
+test("the answer gives other names and families back; another name needs no bucket of its own", () => {
+  const answer = [
+    "Frontend development | Web", "React | Web", "Go | Backend",
+    "same | front-end | Frontend development",
+    "family | React | Web frontend", "family | Frontend development | Web frontend", "family | Go | Go",
+    "Web | a | b | c | d", "Backend | e | f | g | h",
+  ].join("\n");
+  const { groups, errors, same, families } = parseBuckets(answer, ["Frontend development", "front-end", "React", "Go"], 2);
+  assert.deepEqual(errors, []);
+  assert.deepEqual(groups, [{ name: "Backend", areas: ["Go"] }, { name: "Web", areas: ["Frontend development", "React"] }]);
+  assert.deepEqual([...same], [["front-end", "Frontend development"]]);
+  assert.equal(families.get("React"), "Web frontend");
+  // Another name for something that isn't an area, or for another name, can't be used.
+  const bad = parseBuckets("A | X\nsame | B | Nope\nsame | C | B\nX | a | b | c | d", ["A", "B", "C"], 1);
+  assert.deepEqual(bad.errors, ["Other name for something that isn't an area: B → Nope", "Other name for another other name: C → B", "Missing: B"]);
+});
+
+test("families split across buckets are listed, for the preview", () => {
+  const groups = [{ name: "Web", areas: ["React", "Vue"] }, { name: "Backend", areas: ["TypeScript", "Go"] }];
+  const familyOf = new Map([["React", "Web frontend"], ["Vue", "Web frontend"], ["TypeScript", "Web frontend"], ["Go", "Go"]]);
+  assert.deepEqual(splitFamilies(groups, familyOf), [{ family: "Web frontend", buckets: ["Backend", "Web"] }]);
 });
