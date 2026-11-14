@@ -3,7 +3,7 @@
 // drawn from these answers: live supply is anonymous counts, so no sheet holds anyone's own ratings for the page.
 import { load, SHEET_LABEL } from "./source.js";
 import { readTabs, withSheet } from "./google.js";
-import { topAreas } from "./buckets.js";
+import { bucketNames } from "./buckets.js";
 import { readAreas } from "./areas.js";
 import { RATINGS, DOMAIN_GRID as DOMAIN } from "./icform.js";
 import { readFormRows, prefillUrl, followBuckets } from "./prefill.js";
@@ -23,11 +23,10 @@ const rateNote = document.getElementById("rate-note");
 
 // Only the buckets are needed here: they are the questions. Optional in both modes.
 const session = await load(["buckets", "bucket-history", "areas"]);
-const buckets = session.data.buckets ?? [];
-const areas = topAreas(buckets, readAreas(session.data.areas ?? []).defaultBuckets);
-if (!buckets.length) {
+const areas = bucketNames(session.data.buckets ?? [], readAreas(session.data.areas ?? []).bucketRows);
+if (!areas.length) {
   rateNote.hidden = false;
-  rateNote.textContent = "The discipline hasn't grouped its areas into buckets yet, so these are the default ten.";
+  rateNote.textContent = "The discipline hasn't set up its buckets yet, so there is nothing to rate.";
 }
 
 // The form's link and entry IDs, from the aggregate sheet, written by the portal's Set up IC form.

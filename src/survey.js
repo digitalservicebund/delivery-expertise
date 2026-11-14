@@ -10,7 +10,7 @@ import { teamsOf, projectsByTeam } from "./teams.js";
 import { relevance, matches } from "./cloud.js";
 import { COP, SUPPORT_KEY, readAreas } from "./areas.js";
 import { readProjectTypes, typesByArea, MAX_PROJECT_TYPES } from "./projecttypes.js";
-import { effectiveBuckets, suggestBuckets, demandAreas, surveySections, inBuckets, readExamples } from "./buckets.js";
+import { suggestBuckets, demandAreas, surveySections, inBuckets, readExamples } from "./buckets.js";
 import { METHODS as METHOD_LEVEL, PEOPLE as PEOPLE_COUNT, LEVELS, supplyAsOf, assessedCoverage, combinedAnswer, WORKING_DAYS_PER_QUARTER, UTILISATION, BOOKABLE_DAYS_PER_QUARTER } from "./model.js";
 
 const QUARTER = "2027-Q1";
@@ -246,18 +246,17 @@ function rowsFor(form, team) {
 // Missing datasets come back empty: the survey still works, just without suggestions or a team list.
 // Live reads the teams tab instead of staffing: staffing sits in the discipline sheet, which project leads
 // can't open. The teams tab says who may answer for which team.
-const BUCKET_TABS = ["buckets", "bucket-history", "areas", "bucket-examples", "project-types"];
+const BUCKET_TABS = ["buckets", "bucket-history", "areas", "project-types"];
 const LIVE_TABS = [...DATA_TABS.filter((n) => n !== "staffing"), "teams", ...BUCKET_TABS];
 const session = await load((await currentMode()) === "live" ? LIVE_TABS : [...DATA_TABS, ...BUCKET_TABS]);
 const sets = session.data;
 const [staffing, plan, demand, activity, assessments] = ["staffing", "discipline-plan", "project-demand", "historical-activity", "expertise-assessments"].map((n) => sets[n] ?? []);
-// The buckets in force (the default ten until a grouping is applied) and which bucket each area is in.
-// The area list from the areas tab (the built-in one while it is empty).
+// The area list from the areas tab, with the bucket each area is in.
 const catalogueAreas = readAreas(sets.areas ?? []);
-// Examples per working method, per bucket. A bucket without all four gets generic ones.
-const bucketExamples = readExamples(sets["bucket-examples"] ?? []);
+// Examples per working method, per bucket, from the buckets tab. A bucket without all four gets generic ones.
+const bucketExamples = readExamples(sets.buckets ?? []);
 const examplesFor = (bucket) => (bucketExamples.get(bucket)?.every(Boolean) ? bucketExamples.get(bucket) : GENERIC_CUSTOM);
-const bucketRows = effectiveBuckets(sets.buckets ?? [], catalogueAreas.defaultBucketAreas);
+const bucketRows = catalogueAreas.bucketRows;
 const bucketOfArea = new Map(bucketRows.map((r) => [r.area, r.bucket]));
 const bucketNames = [...new Set(bucketRows.map((r) => r.bucket))];
 // Earlier answers, activity and ratings per bucket, whatever they were recorded under.

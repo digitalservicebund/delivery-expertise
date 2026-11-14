@@ -5,7 +5,7 @@ import { withSheet, canEdit } from "./google.js";
 import { restoreAssessment } from "./selfassessment.js";
 import { ratingsToProfile, followBuckets } from "./prefill.js";
 import { readAreas } from "./areas.js";
-import { inBuckets, topAreas, effectiveBuckets } from "./buckets.js";
+import { inBuckets, bucketNames } from "./buckets.js";
 import { personaView, SIGNAL } from "./persona.js";
 import { buildModel, change, LEVELS, METHOD_NAME, personalRatings, reconciledStatus, DOMAIN } from "./model.js";
 
@@ -930,11 +930,11 @@ async function show() {
   }
   const { data: sets, mode } = session;
   // The engineer's saved answers follow any regrouping since: a former bucket's answer counts for where it went.
-  const { defaultBuckets, defaultBucketAreas } = readAreas(sets.areas ?? []);
-  if (ownView) saved.ratings = followBuckets(saved.ratings, topAreas(sets.buckets ?? [], defaultBuckets), sets["bucket-history"] ?? []);
+  const { bucketRows } = readAreas(sets.areas ?? []);
+  if (ownView) saved.ratings = followBuckets(saved.ratings, bucketNames(sets.buckets ?? [], bucketRows), sets["bucket-history"] ?? []);
   const loaded = Object.fromEntries(Object.entries(SOURCES).map(([k, name]) => [k, sets[name] ?? []]));
   const { demand, plan, assessments, activity } = loaded;
-  Object.assign(loaded, inBuckets(mode === "live" ? { demand, plan } : { demand, plan, assessments, activity }, effectiveBuckets(sets.buckets ?? [], defaultBucketAreas), sets["bucket-history"] ?? [], { other: true }));
+  Object.assign(loaded, inBuckets(mode === "live" ? { demand, plan } : { demand, plan, assessments, activity }, bucketRows, sets["bucket-history"] ?? [], { other: true }));
   // Everything is drawn per person and team: without staffing there is nothing to draw. The own view needs none.
   if (!ownView && !loaded.staffing.length) {
     throw new Error(mode === "live" ? "The discipline sheet's staffing tab is empty: paste the ds-staffing snapshot into it." : "No staffing data.");

@@ -1,7 +1,7 @@
 // Converting between Sheets API values (arrays of rows, the first being the header) and the row objects
 // the pages work with, the same shape parseCsv gives. Pure, so it runs in tests.
 import { STAFFING_HEADER, teamsFormula } from "./teams.js";
-import { BUCKET_HEADER, HISTORY_HEADER, EXAMPLE_HEADER } from "./buckets.js";
+import { BUCKET_HEADER, HISTORY_HEADER } from "./buckets.js";
 import { AREA_HEADER } from "./areas.js";
 import { PROJECT_TYPE_HEADER } from "./projecttypes.js";
 
@@ -61,19 +61,18 @@ export function liveLayout(sheets) {
     // teams is read only by the survey, from this sheet. Its emails never go to the aggregate sheet.
     projects: { demand: { header: DEMAND_HEADER }, teams: { formula: teamsFormula(sheets.discipline) } },
     // Pasted by hand from the ds-staffing snapshot export. Holds names and levels: discipline heads only.
-    // buckets: the top areas, written by the portal's bucket review (src/buckets.js).
-    discipline: { plan: { header: PLAN_HEADER }, staffing: { header: STAFFING_HEADER }, buckets: { header: BUCKET_HEADER }, "bucket-history": { header: HISTORY_HEADER }, areas: { header: AREA_HEADER }, "bucket-examples": { header: EXAMPLE_HEADER }, "project-types": { header: PROJECT_TYPE_HEADER } },
+    // buckets: the top areas with their examples; areas: which bucket each area is in. Both written by the
+    // portal's bucket review (src/buckets.js) and editable by hand.
+    discipline: { plan: { header: PLAN_HEADER }, staffing: { header: STAFFING_HEADER }, buckets: { header: BUCKET_HEADER }, "bucket-history": { header: HISTORY_HEADER }, areas: { header: AREA_HEADER }, "project-types": { header: PROJECT_TYPE_HEADER } },
     aggregate: {
       demand: { formula: importOf(sheets.projects, "demand", DEMAND_HEADER) },
       plan: { formula: importOf(sheets.discipline, "plan", PLAN_HEADER) },
-      // Area and bucket names only: the discipline view maps demand to the buckets supply is counted in.
+      // The buckets and their examples: what the IC form asks about, and what the survey shows above each grid.
       buckets: { formula: importOf(sheets.discipline, "buckets", BUCKET_HEADER) },
       // Where former buckets went, so older answers and plan rows follow them.
       "bucket-history": { formula: importOf(sheets.discipline, "bucket-history", HISTORY_HEADER) },
-      // The area list with its default buckets, support and examples, for the survey and the IC pages.
+      // The area list with each area's bucket and support, for the survey, the IC pages and the discipline view.
       areas: { formula: importOf(sheets.discipline, "areas", AREA_HEADER) },
-      // Examples per working method for each bucket, shown above its grid in the project survey.
-      "bucket-examples": { formula: importOf(sheets.discipline, "bucket-examples", EXAMPLE_HEADER) },
       // The areas each project type suggests, preselected in the project survey's word cloud.
       "project-types": { formula: importOf(sheets.discipline, "project-types", PROJECT_TYPE_HEADER) },
     },

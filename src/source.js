@@ -19,15 +19,14 @@ const LIVE = {
   "expertise-assessments": ["aggregate", "supply"],
   staffing: ["discipline", "staffing"],
   teams: ["projects", "teams"],
-  // Which bucket each area is in: the IC form and supply are per bucket (src/buckets.js).
+  // The buckets with their examples; the areas tab says which bucket each area is in (src/buckets.js).
   buckets: ["aggregate", "buckets"],
   "bucket-history": ["aggregate", "bucket-history"],
   areas: ["aggregate", "areas"],
-  "bucket-examples": ["aggregate", "bucket-examples"],
   "project-types": ["aggregate", "project-types"],
 };
-// Datasets a page can do without: the buckets tab exists only once a grouping has been applied.
-const OPTIONAL = new Set(["buckets", "bucket-history", "areas", "bucket-examples", "project-types"]);
+// Datasets a page can do without: pages fall back to generic examples, or no project types.
+const OPTIONAL = new Set(["buckets", "bucket-history", "areas", "project-types"]);
 const MODE_KEY = "data-mode";
 const LABEL = { prototype: "Prototype data", live: "Live data", unconfigured: "Not set up" };
 

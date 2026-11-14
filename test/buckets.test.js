@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { compareBuckets, bucketPrompt, parseBuckets, readBuckets, bucketRows, areasToGroup, pending, topAreas, inBuckets, BUCKET_HEADER, HISTORY_HEADER, nextHistory, aliasesOf, renamedTo, inferHistory, effectiveBuckets, suggestBuckets, demandAreas, areaDemand, OTHER, surveySections, EXAMPLE_HEADER, fixPrompt, readExamples, bucketsWithoutExamples, exampleRows } from "../src/buckets.js";
+import { compareBuckets, bucketPrompt, parseBuckets, readBuckets, areasToGroup, pending, bucketNames, inBuckets, BUCKET_HEADER, HISTORY_HEADER, nextHistory, aliasesOf, renamedTo, inferHistory, suggestBuckets, demandAreas, areaDemand, OTHER, surveySections, fixPrompt, readExamples, bucketsWithoutExamples, exampleRows } from "../src/buckets.js";
 import { liveLayout } from "../src/sheets.js";
 import { AREA_HEADER } from "../src/areas.js";
 import { CATALOGUE } from "./fixtures/areas.js";
@@ -25,21 +25,21 @@ test("the buckets tab reads back as named groups in tab order", () => {
   assert.deepEqual(readBuckets([]), { groups: [], generatedAt: "" });
 });
 
-test("the IC form and supply ask about the buckets, or the standard areas until there are any", () => {
-  assert.deepEqual(topAreas([{ area: "CSS", bucket: "Web" }, { area: "Go", bucket: "Backend" }, { area: "JS", bucket: "Web" }], ["Frontend"]), ["Web", "Backend"]);
-  assert.deepEqual(topAreas([], ["Frontend"]), ["Frontend"]);
+test("the IC form and supply ask about the buckets tab's buckets in its order, then any other bucket an area is in", () => {
+  const areaBuckets = [{ area: "CSS", bucket: "Web" }, { area: "Go", bucket: "Backend" }, { area: "JS", bucket: "Web" }, { area: "Rust", bucket: "Systems" }];
+  assert.deepEqual(bucketNames([{ bucket: "Backend" }, { bucket: "Web" }, { bucket: "" }], areaBuckets), ["Backend", "Web", "Systems"]);
+  assert.deepEqual(bucketNames([], areaBuckets), ["Web", "Backend", "Systems"]);
 });
 
-test("the discipline sheet gets a buckets tab, and the aggregate sheet imports it for everyone", () => {
+test("the discipline sheet gets a buckets tab listing the buckets with their examples, and the aggregate sheet imports it for everyone", () => {
   const layout = liveLayout({ discipline: "D" });
   assert.deepEqual(layout.discipline.buckets, { header: BUCKET_HEADER });
   assert.deepEqual(layout.discipline["bucket-history"], { header: HISTORY_HEADER });
   assert.match(layout.aggregate["bucket-history"].formula, /IMPORTRANGE\("D", "bucket-history!A:C"\)/);
   assert.deepEqual(layout.discipline.areas, { header: AREA_HEADER });
-  assert.match(layout.aggregate.areas.formula, /IMPORTRANGE\("D", "areas!A:C"\)/);
-  assert.deepEqual(layout.discipline["bucket-examples"], { header: EXAMPLE_HEADER });
-  assert.match(layout.aggregate["bucket-examples"].formula, /IMPORTRANGE\("D", "bucket-examples!A:E"\)/);
-  assert.equal(layout.aggregate.buckets.formula, '=QUERY(IMPORTRANGE("D", "buckets!A:C"), "select Col1, Col2, Col3 where Col1 is not null", 1)');
+  assert.match(layout.aggregate.areas.formula, /IMPORTRANGE\("D", "areas!A:D"\)/);
+  assert.ok(!("bucket-examples" in layout.discipline) && !("bucket-examples" in layout.aggregate));
+  assert.equal(layout.aggregate.buckets.formula, '=QUERY(IMPORTRANGE("D", "buckets!A:E"), "select Col1, Col2, Col3, Col4, Col5 where Col1 is not null", 1)');
 });
 
 test("demand and planned adjustments are counted per bucket, so they meet supply, which is per bucket", () => {
@@ -63,14 +63,6 @@ test("prototype ratings and activity are per area, so they are mapped to buckets
   const out = inBuckets({ demand: [], plan: [], assessments: [{ expertise: "React", level: 4 }], activity: [{ expertise: "React" }] }, rows);
   assert.deepEqual([out.assessments[0].expertise, out.activity[0].expertise], ["Web", "Web"]);
   assert.deepEqual(Object.keys(inBuckets({ demand: [], plan: [] }, rows)), ["demand", "plan"]);
-});
-
-test("buckets are written one row per area, stamped", () => {
-  assert.deepEqual(BUCKET_HEADER, ["area", "bucket", "generated_at"]);
-  assert.deepEqual(bucketRows([{ name: "Web", areas: ["Frontend", "CSS"] }], "T"), [
-    { area: "CSS", bucket: "Web", generated_at: "T" },
-    { area: "Frontend", bucket: "Web", generated_at: "T" },
-  ]);
 });
 
 test("admins are prompted for ungrouped areas and after a quarter", () => {
@@ -215,14 +207,6 @@ test("former buckets are found in the IC responses' columns and mapped retroacti
 });
 
 
-test("until a grouping is applied, the default buckets and their areas are the buckets", () => {
-  const rows = effectiveBuckets([], CATALOGUE.defaultBucketAreas);
-  assert.deepEqual([...new Set(rows.map((r) => r.bucket))], CATALOGUE.defaultBuckets);
-  assert.ok(rows.some((r) => r.area === "Operations" && r.bucket === "Software lifecycle"));
-  const applied = [{ area: "React", bucket: "Web" }];
-  assert.equal(effectiveBuckets(applied, CATALOGUE.defaultBucketAreas), applied);
-});
-
 test("rows already naming a current bucket keep it, even when an area of that name sits elsewhere", () => {
   const rows = [{ area: "Backend development", bucket: "Backend" }, { area: "Backend", bucket: "Platform" }, { area: "Kubernetes", bucket: "Platform" }];
   const out = inBuckets({ demand: [{ expertise: "Backend" }, { expertise: "Kubernetes" }] }, rows);
@@ -230,7 +214,7 @@ test("rows already naming a current bucket keep it, even when an area of that na
 });
 
 test("a write-in is matched to buckets by name: an exact area first, else buckets sharing words with it", () => {
-  const rows = effectiveBuckets([], CATALOGUE.defaultBucketAreas);
+  const rows = CATALOGUE.bucketRows;
   assert.deepEqual(suggestBuckets("search", rows), ["Data & AI"]);
   assert.deepEqual(suggestBuckets("React frontend", rows).slice(0, 1), ["Frontend"]);
   assert.equal(suggestBuckets("Kubernetes operations", rows)[0], "Software lifecycle");
@@ -253,8 +237,8 @@ test("picked areas become one survey section per bucket, in picking order", () =
   ]);
 });
 
-test("examples per working method belong to buckets, read from their own tab", () => {
-  assert.deepEqual(EXAMPLE_HEADER, ["bucket", "operative", "conceptual", "strategic", "comprehensive"]);
+test("examples per working method belong to buckets, read from the buckets tab", () => {
+  assert.deepEqual(BUCKET_HEADER, ["bucket", "operative", "conceptual", "strategic", "comprehensive"]);
   const examples = readExamples([{ bucket: "Web", operative: "a", conceptual: "b", strategic: "c", comprehensive: "d" }, { bucket: "", operative: "x" }]);
   assert.deepEqual([...examples], [["Web", ["a", "b", "c", "d"]]]);
   assert.deepEqual(bucketsWithoutExamples(["Web", "Data"], [{ bucket: "Web", operative: "a", conceptual: "b", strategic: "c", comprehensive: "" }]), ["Web", "Data"]);

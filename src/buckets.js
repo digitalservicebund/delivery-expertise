@@ -1,22 +1,24 @@
 // The top areas: every area of expertise, including the ones teams add in the survey, grouped into exactly
 // BUCKET_COUNT buckets. The IC form asks about the buckets, and the aggregate supply counts per bucket.
-// The buckets tab in the discipline sheet is the source of truth; regrouping only proposes, and an admin applies.
-// Pure, so it runs in tests. Gemini proposes the grouping, through copy and paste in the portal (src/portal.js).
+// The discipline sheet holds them in two tabs: buckets lists the buckets with an example per working method, and
+// the areas tab's bucket column says which bucket each area is in (src/areas.js). Regrouping only proposes, and an
+// admin applies. Pure, so it runs in tests. Gemini proposes the grouping, through copy and paste in the portal.
+// Groupings are worked with as rows of { area, bucket, generated_at }: readAreas(...).bucketRows.
 
 
 export const BUCKET_COUNT = 10;
 // Where the discipline view counts demand for write-ins that are in no bucket yet. Not a real bucket: the IC form
 // never asks about it, so it has no supply, and it disappears once a regrouping places those write-ins.
 export const OTHER = "Other (not yet grouped)";
-export const BUCKET_HEADER = ["area", "bucket", "generated_at"];
+// The buckets tab: one row per bucket, with one example of the work per working method, shown above the bucket's
+// grid in the project survey.
+export const BUCKET_HEADER = ["bucket", "operative", "conceptual", "strategic", "comprehensive"];
 // Where every former bucket went: its closest match in the current buckets. IC answers are stored per bucket
 // name, so this keeps older answers counted after a regrouping.
 export const HISTORY_HEADER = ["bucket", "now", "changed_at"];
-// One example of the work per working method, per bucket: what the project survey shows above each bucket's grid.
-export const EXAMPLE_HEADER = ["bucket", "operative", "conceptual", "strategic", "comprehensive"];
-const METHOD_COLUMNS = EXAMPLE_HEADER.slice(1);
+const METHOD_COLUMNS = BUCKET_HEADER.slice(1);
 
-// The bucket-examples tab: bucket -> its four examples.
+// The buckets tab: bucket -> its four examples.
 export const readExamples = (rows) => new Map(rows.filter((r) => r.bucket?.trim()).map((r) => [r.bucket, METHOD_COLUMNS.map((c) => r[c] ?? "")]));
 
 // The buckets that lack any of their four examples, for the set-up to report.
@@ -25,7 +27,7 @@ export function bucketsWithoutExamples(buckets, rows) {
   return buckets.filter((b) => !(examples.get(b) ?? []).filter(Boolean).length || examples.get(b).some((e) => !e));
 }
 
-// The bucket-examples tab after applying a regrouping (result: from compareBuckets; examples: by proposed name, from
+// The buckets tab after applying a regrouping (result: from compareBuckets; examples: by proposed name, from
 // parseBuckets, with the proposed groups). The result keeps their order, so each final name takes its group's.
 export function exampleRows(result, proposed, examples) {
   return result.buckets.map((b, i) => {
@@ -47,7 +49,7 @@ export function areasToGroup(demand, currentRows, standard) {
   return [...new Set(names)].sort(byName);
 }
 
-// The buckets tab as groups, in the order buckets first appear, with when they were generated.
+// A grouping's rows as groups, in the order buckets first appear, with when they were generated.
 export function readBuckets(rows) {
   const groups = new Map();
   let generatedAt = "";
@@ -60,10 +62,11 @@ export function readBuckets(rows) {
   return { groups: [...groups].map(([name, areas]) => ({ name, areas: areas.sort(byName) })), generatedAt };
 }
 
-// The names the IC form asks about and supply counts: the buckets, or the standard areas until there are any.
-export function topAreas(rows, standard) {
-  const names = readBuckets(rows).groups.map((g) => g.name);
-  return names.length ? names : standard;
+// The names the IC form asks about and supply counts: the buckets tab's, in its order, then any other bucket an
+// area is in (areaBuckets: bucketRows), so no area goes unasked while its bucket waits to be listed.
+export function bucketNames(bucketList, areaBuckets) {
+  const listed = bucketList.map((r) => r.bucket?.trim()).filter(Boolean);
+  return [...new Set([...listed, ...areaBuckets.map((r) => r.bucket)])];
 }
 
 // Supply is counted per bucket, so the discipline view counts demand per bucket too: each demand row's area, and
@@ -139,7 +142,7 @@ export function inferHistory(headers, bucketRows, history, defaults, at) {
 }
 
 // The most frequent value, ties going to `preferred` when it is among them, else the first seen; undefined for none.
-function mostCommon(values, preferred) {
+export function mostCommon(values, preferred) {
   const counts = new Map();
   for (const v of values) counts.set(v, (counts.get(v) ?? 0) + 1);
   const top = Math.max(0, ...counts.values());
@@ -155,9 +158,6 @@ export function aliasesOf(history) {
   for (const [bucket, now] of renamedTo(history)) (out[now] ??= []).push(bucket);
   return out;
 }
-
-export const bucketRows =(groups, at) =>
-  groups.flatMap((g) => [...g.areas].sort(byName).map((area) => ({ area, bucket: g.name, generated_at: at })));
 
 // What the portal prompts admins about: areas in no bucket, and a grouping older than a survey round.
 export function pending(currentRows, areas, now = new Date()) {
@@ -337,13 +337,6 @@ export function compareBuckets(current, proposed) {
     removed: current.filter((c) => !matched.has(c.name)).map((c) => ({ name: c.name, mergedInto: mostly(c.areas, buckets) })),
   };
   return { buckets, unchanged: Object.values(changes).every((l) => !l.length), ...changes };
-}
-
-// The buckets in force: the applied grouping, or until there is one, the default buckets and the areas they cover.
-// defaultBucketAreas: from the areas tab (readAreas).
-export function effectiveBuckets(rows, defaultBucketAreas) {
-  if (rows.some((r) => r.area && r.bucket)) return rows;
-  return Object.entries(defaultBucketAreas).flatMap(([bucket, areas]) => areas.map((area) => ({ area, bucket })));
 }
 
 // A demand row's areas. Survey answers are per bucket and name the picked areas in their areas column ("; ");
