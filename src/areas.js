@@ -5,12 +5,13 @@
 //   list; answers naming it count for the area it stands for, and searching for it finds that area.
 // - family: closely related areas share one (React, TypeScript → "Web frontend"), finer than a bucket. A family
 //   places an area that has no bucket, guides where write-ins go, and asks regrouping to keep it together.
+// - description: what the area covers, kept up to date by the descriptions workflow (src/descriptions.js).
 // It is the one place that says which bucket an area is in: the portal's regrouping writes the bucket, same_as and
 // family columns, and all can be edited by hand. The buckets themselves, with an example per working method, are
 // on the buckets tab (src/buckets.js). Pure, so it runs in tests.
 export const COP = "the community of practice";
 export const SUPPORT_KEY = { "the platform team": "platform", "the legal and IT security team": "legal", [COP]: "cop" };
-export const AREA_HEADER = ["area", "bucket", "support", "grouped_at", "same_as", "family"];
+export const AREA_HEADER = ["area", "bucket", "support", "grouped_at", "same_as", "family", "description"];
 const SUPPORT_TEXT = Object.fromEntries(Object.entries(SUPPORT_KEY).map(([text, key]) => [key, text]));
 const BUCKET_COUNT = 10;
 

@@ -11,12 +11,13 @@ export const BUCKET_COUNT = 10;
 // never asks about it, so it has no supply, and it disappears once a regrouping places those write-ins.
 export const OTHER = "Other (not yet grouped)";
 // The buckets tab: one row per bucket, with one example of the work per working method, shown above the bucket's
-// grid in the project survey.
-export const BUCKET_HEADER = ["bucket", "operative", "conceptual", "strategic", "comprehensive"];
+// grid in the project survey, and a short description, kept up to date by the descriptions workflow
+// (src/descriptions.js).
+export const BUCKET_HEADER = ["bucket", "operative", "conceptual", "strategic", "comprehensive", "description"];
 // Where every former bucket went: its closest match in the current buckets. IC answers are stored per bucket
 // name, so this keeps older answers counted after a regrouping.
 export const HISTORY_HEADER = ["bucket", "now", "changed_at"];
-const METHOD_COLUMNS = BUCKET_HEADER.slice(1);
+export const METHOD_COLUMNS = BUCKET_HEADER.slice(1, 5);
 
 // The buckets tab: bucket -> its four examples.
 export const readExamples = (rows) => new Map(rows.filter((r) => r.bucket?.trim()).map((r) => [r.bucket, METHOD_COLUMNS.map((c) => r[c] ?? "")]));
@@ -27,13 +28,13 @@ export function bucketsWithoutExamples(buckets, rows) {
   return buckets.filter((b) => !(examples.get(b) ?? []).filter(Boolean).length || examples.get(b).some((e) => !e));
 }
 
-// The buckets tab after applying a regrouping (result: from compareBuckets; examples: by proposed name, from
-// parseBuckets, with the proposed groups). The result keeps their order, so each final name takes its group's.
-export function exampleRows(result, proposed, examples) {
-  return result.buckets.map((b, i) => {
-    const four = examples.get(proposed[i].name) ?? ["", "", "", ""];
-    return { bucket: b.name, ...Object.fromEntries(METHOD_COLUMNS.map((c, j) => [c, four[j] ?? ""])) };
-  });
+// The buckets tab after applying a regrouping (result: from compareBuckets; list: the buckets tab as read). Each
+// bucket keeps the row of the current bucket it came from, renamed or not, with its examples and description; a new
+// one starts blank. Regrouping never writes them: the descriptions workflow (src/descriptions.js) checks they fit.
+export function bucketRowsAfter(result, list) {
+  const rowOf = new Map(list.filter((r) => r.bucket?.trim()).map((r) => [r.bucket.trim(), r]));
+  const blank = Object.fromEntries(BUCKET_HEADER.map((c) => [c, ""]));
+  return result.buckets.map((b) => ({ ...blank, ...(rowOf.get(b.previous) ?? {}), bucket: b.name }));
 }
 // After this long, admins are nudged to regroup even without new areas: one survey round.
 const STALE_DAYS = 90;
@@ -315,29 +316,24 @@ export function bucketPrompt(areas, current, demand = new Map(), critical = new 
       "Be somewhat more cautious about renaming, splitting or merging them: prefer keeping their name and core areas. You can still change them where the areas or demand clearly call for it.",
     ] : []),
     "",
-    `Answer in ${projectTypes.length ? "six" : "five"} parts. First, the ${count} bucket names, numbered 1 to ${count}, one per line, as: 1. name`,
+    `Answer in ${projectTypes.length ? "five" : "four"} parts. First, the ${count} bucket names, numbered 1 to ${count}, one per line, as: 1. name`,
     `Before going on, count them: exactly ${count}. With more, merge the two most closely related; with fewer, split the largest. Repeat until there are ${count}.`,
     "Then check every pair: if one bucket is a subset of another, or their names could swap, merge them and split elsewhere.",
     "",
     "Second, one line per area, formatted as: area | bucket",
     "Use the area names exactly as listed, and only the bucket names from your numbered list, spelled the same.",
     "",
-    "Third, for each of those buckets, one line with an example of the work at each working method, formatted as:",
-    "bucket | operative | conceptual | strategic | comprehensive",
-    "Operative: implementing, applying standard methods. Conceptual: planning, shaping and adapting methods. Strategic: setting guidelines, leading across teams. Comprehensive: shaping it across the wider government ecosystem.",
-    "Keep each example short, starting with a verb, for example: Build components to the design system.",
-    "",
-    "Fourth, one line for each area that is only another name for another area on the list (the same thing, spelled or worded differently, not merely related), formatted as:",
+    "Third, one line for each area that is only another name for another area on the list (the same thing, spelled or worded differently, not merely related), formatted as:",
     "same | other name | area",
     "Such an other name gets no line in the second part. Leave this part empty if there are none.",
     "",
-    "Fifth, one line per area giving its family: a short name for a few closely related areas, finer than a bucket, keeping the families above where they still fit.",
+    "Fourth, one line per area giving its family: a short name for a few closely related areas, finer than a bucket, keeping the families above where they still fit.",
     "Keep families narrow: one tight theme, never two joined by \"&\" (not Governance & compliance), and never so broad that a family becomes a shadow bucket covering most of its bucket. Split an existing family that has grown too broad.",
     "A family of one area is fine, and better than stretching a family's meaning to hold an area that doesn't quite fit. Formatted as:",
     "family | area | family",
     ...(projectTypes.length ? [
       "",
-      "Sixth, one line per project type listed above, with the areas the survey should pre-fill for a project of that type: the ones such a project usually needs, typically three to eight. Formatted as:",
+      "Fifth, one line per project type listed above, with the areas the survey should pre-fill for a project of that type: the ones such a project usually needs, typically three to eight. Formatted as:",
       "type | project type | area; area",
       "Use the project type names exactly as listed and only area names from the list, never another name for one. Keep a type's current areas where they still fit, add areas that now fit better, and drop ones that no longer do. A type that needs no particular areas (such as Others) gets an empty list.",
     ] : []),
@@ -368,15 +364,14 @@ export function fixPrompt(errors, groups, count) {
 export const cellsOf = (line) => line.replace(/[*`]/g, "").trim().replace(/^\||\|$/g, "").split("|").map((c) => c.trim());
 
 // Reads the pasted answer back: one "area | bucket" per line, tolerating markdown tables, bold, code fences and
-// chatter, then "bucket | operative | conceptual | strategic | comprehensive" lines with examples. Area names match
-// case-insensitively. Returns { groups, errors, examples: bucket -> 4 examples }; any error means don't apply it.
+// chatter, then the other names and families. Area names match case-insensitively. Returns
+// { groups, errors, same, families }; any error means don't apply it.
 // count: how many buckets there must be. Ten, or one per area when there are fewer areas.
 export function parseBuckets(text, areas, count = Math.min(BUCKET_COUNT, areas.length)) {
   const canonical = new Map(areas.map((a) => [a.toLowerCase(), a]));
   const bucketOf = new Map();
   const errors = [];
   const unknown = [];
-  const examples = new Map();
   const same = new Map();
   const families = new Map();
   const tagged = [];
@@ -386,10 +381,6 @@ export function parseBuckets(text, areas, count = Math.min(BUCKET_COUNT, areas.l
     if (cells.length === 3 && (tag === "same" || tag === "family") && cells[1] && cells[2]) {
       // The format lines themselves ("same | other name | area") name no area, so they are skipped like headers.
       if (canonical.has(cells[1].toLowerCase())) tagged.push([tag, canonical.get(cells[1].toLowerCase()), cells[2]]);
-      continue;
-    }
-    if (cells.length === 5 && cells.every(Boolean) && cells[0].toLowerCase() !== "bucket" && !/^:?-+:?$/.test(cells[1])) {
-      examples.set(cells[0].toLowerCase(), cells.slice(1));
       continue;
     }
     // Project-type lines ("type | project type | areas") are read by parseTypeAreas (src/projecttypes.js).
@@ -419,11 +410,7 @@ export function parseBuckets(text, areas, count = Math.min(BUCKET_COUNT, areas.l
   if (missing.length) errors.push(`Missing: ${missing.join(", ")}`);
   const groups = readBuckets([...bucketOf].map(([area, bucket]) => ({ area, bucket }))).groups.sort((a, b) => byName(a.name, b.name));
   if (groups.length !== count) errors.push(`${groups.length} bucket${groups.length === 1 ? "" : "s"}: exactly ${count}, please`);
-  // Examples keyed by the bucket names the grouping uses, matched case-insensitively.
-  const byGroup = new Map(groups.filter((g) => examples.has(g.name.toLowerCase())).map((g) => [g.name, examples.get(g.name.toLowerCase())]));
-  const noExamples = groups.map((g) => g.name).filter((n) => !byGroup.has(n));
-  if (noExamples.length) errors.push(`No examples for: ${noExamples.join(", ")}`);
-  return { groups, errors, examples: byGroup, same, families };
+  return { groups, errors, same, families };
 }
 
 // Pairs each proposed group with the current bucket it overlaps most, largest overlaps first, one to one.

@@ -146,12 +146,14 @@
       #head-access output {
         display: block;
       }
-      #buckets label {
+      #buckets label,
+      #descriptions label {
         display: block;
         margin-top: 0.75rem;
         font-weight: 600;
       }
-      #buckets textarea {
+      #buckets textarea,
+      #descriptions textarea {
         display: block;
         box-sizing: border-box;
         width: 100%;
@@ -310,6 +312,40 @@
           </div>
           <output class="muted" aria-live="polite"></output>
           <div id="buckets-proposed"></div>
+        </section>
+        <section id="descriptions" aria-labelledby="descriptions-heading">
+          <h3 id="descriptions-heading">Descriptions</h3>
+          <p class="muted">
+            A short description of every bucket, area and project type, in the
+            <strong>description</strong> column of the buckets, areas and
+            project-types tabs, and each bucket's four level descriptions: an
+            example of its work per working method, shown in the survey.
+            <strong>Ask Gemini</strong> copies a prompt with all the current
+            text: Gemini keeps what still fits and rewrites or adds the rest.
+            Paste its answer below and preview what would change. Nothing is
+            written until you apply it. Run it after regrouping: a renamed
+            bucket keeps its old text, and a new one starts without any.
+          </p>
+          <div id="descriptions-current"></div>
+          <div class="actions">
+            <button type="button" id="descriptions-ask" disabled>Ask Gemini</button>
+          </div>
+          <label for="descriptions-answer">Gemini's answer</label>
+          <textarea
+            id="descriptions-answer"
+            rows="16"
+            placeholder="bucket | name | description, one per line"
+          ></textarea>
+          <div class="actions">
+            <button type="button" id="descriptions-preview">
+              Preview descriptions
+            </button>
+            <button type="button" id="descriptions-apply" hidden>
+              Apply these descriptions
+            </button>
+          </div>
+          <output class="muted" aria-live="polite"></output>
+          <div id="descriptions-proposed"></div>
         </section>
       </section>
     </main>

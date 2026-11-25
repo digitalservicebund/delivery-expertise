@@ -8,7 +8,8 @@ import { FORM_INFO, formItems, formRequests, branchRequest, supplyFormula } from
 import { readAreas, areaIssues, areasAfterGrouping, canonicalDemand, likelyDuplicates } from "./areas.js";
 import { formRows } from "./prefill.js";
 import { PROJECT_TYPE_HEADER, PROJECT_TYPE_SEED, readProjectTypes, projectTypeIssues, dummyProjectTypes, parseTypeAreas, typesAfterGrouping, typeAreaChanges } from "./projecttypes.js";
-import { compareBuckets, bucketPrompt, parseBuckets, readBuckets, areasToGroup, pending, bucketNames, nextHistory, aliasesOf, inferHistory, bucketsWithoutExamples, exampleRows, areaDemand, areaCritical, bucketGaps, splitFamilies, fixPrompt, typeDemand, BUCKET_COUNT } from "./buckets.js";
+import { descriptionItems, descriptionPrompt, parseDescriptions, descriptionChanges, withDescriptions, withLevels } from "./descriptions.js";
+import { compareBuckets, bucketPrompt, parseBuckets, readBuckets, areasToGroup, pending, bucketNames, nextHistory, aliasesOf, inferHistory, bucketsWithoutExamples, bucketRowsAfter, areaDemand, areaCritical, bucketGaps, splitFamilies, fixPrompt, typeDemand, BUCKET_COUNT } from "./buckets.js";
 
 const mode = await currentMode();
 bar(mode);
@@ -143,7 +144,7 @@ async function setUpLiveSheets(config, t) {
   lines.push(...areaIssues(areaRows, listedBuckets).map((issue) => `discipline sheet, areas: ${issue}`));
   lines.push(...(await seedProjectTypes(config, t, catalogue.names)));
   const bare = bucketsWithoutExamples(areas, listedBuckets);
-  if (bare.length) lines.push(`discipline sheet, buckets: buckets without all four examples, shown with generic ones in the survey: ${bare.join(", ")}. Fill them in there, or Ask Gemini again.`);
+  if (bare.length) lines.push(`discipline sheet, buckets: buckets without all four examples, shown with generic ones in the survey: ${bare.join(", ")}. Fill them in there, or use Ask Gemini in the portal's Descriptions panel.`);
   // Google lets nobody approve an import through the API: it takes one click in each importing sheet.
   const link = (sheet) => Object.assign(document.createElement("a"), {
     href: `https://docs.google.com/spreadsheets/d/${config.sheets[sheet]}/edit`, target: "_blank", rel: "noopener", textContent: SHEET_LABEL[sheet],
@@ -217,12 +218,13 @@ async function readDemand(config, t) {
 }
 
 async function showBuckets(config, t) {
-  const [{ history, areaRows, catalogue, typeRows, projectTypes }, rawDemand] = await Promise.all([readBucketTabs(config, t, bucketSheet()), readDemand(config, t)]);
+  const [{ list, history, areaRows, catalogue, typeRows, projectTypes }, rawDemand] = await Promise.all([readBucketTabs(config, t, bucketSheet()), readDemand(config, t)]);
   // Answers naming another name for an area count for that area, so other names are never grouped on their own.
   const demand = canonicalDemand(rawDemand, catalogue.aliases);
   const current = catalogue.bucketRows;
   const areas = areasToGroup(demand, current, catalogue.names);
-  bucketState = { current, history, demand, areas, areaRows, catalogue, typeRows, projectTypes };
+  bucketState = { current, history, demand, areas, areaRows, catalogue, list, typeRows, projectTypes };
+  showDescriptions({ list, areaRows, typeRows });
   const { ungrouped, stale, empty } = pending(current, areas);
   const prompt = document.getElementById("buckets-prompt");
   prompt.hidden = !(empty || ungrouped.length || stale);
@@ -242,27 +244,28 @@ async function showBuckets(config, t) {
 
 // Copies the prompt and opens Gemini, both straight from the click: browsers allow clipboard writes and new tabs
 // only then. The admin's own Gemini, signed in with their own account; nothing goes through this app.
-askButton.addEventListener("click", () => {
-  const text = bucketState.prompt;
+// out: where to say so; proposed: where to show the prompt when it can't be copied.
+function askGemini(text, out, proposed) {
   // Without clipboard access, the prompt is shown on the page to copy by hand.
   const showPrompt = () => {
-    bucketStatus.replaceChildren("Couldn't copy the prompt. Copy it from here into Gemini, then paste Gemini's answer below:");
-    document.getElementById("buckets-proposed").replaceChildren(el("pre", text));
+    out.replaceChildren("Couldn't copy the prompt. Copy it from here into Gemini, then paste Gemini's answer below:");
+    proposed.replaceChildren(el("pre", text));
   };
   if (!navigator.clipboard) showPrompt();
   else navigator.clipboard.writeText(text).then(
-    () => bucketStatus.replaceChildren("Prompt copied. Paste it into Gemini, then paste Gemini's answer below."),
+    () => out.replaceChildren("Prompt copied. Paste it into Gemini, then paste Gemini's answer below."),
     showPrompt,
   );
   window.open("https://gemini.google.com/app", "_blank", "noopener");
-});
+}
+askButton.addEventListener("click", () => askGemini(bucketState.prompt, bucketStatus, document.getElementById("buckets-proposed")));
 
 async function previewBuckets(config, t) {
   // Reading may have failed when the panel opened, say before a sheet was handed to the app: try again.
   if (!bucketState) await showBuckets(config, t);
   const { current, areas, projectTypes } = bucketState;
   const parsed = parseBuckets(answerBox.value, areas);
-  const { groups, examples, same, families } = parsed;
+  const { groups, same, families } = parsed;
   const { areasOf, errors: typeErrors } = parseTypeAreas(answerBox.value, projectTypes, areas);
   const errors = [...parsed.errors, ...typeErrors];
   if (errors.length) {
@@ -274,7 +277,7 @@ async function previewBuckets(config, t) {
     return bucketStatus.replaceChildren("This answer can't be used as it is. A follow-up for Gemini is copied, or edit the answer here:");
   }
   const result = compareBuckets(readBuckets(current).groups, groups);
-  Object.assign(bucketState, { result, groups, examples, same, families, areasOf });
+  Object.assign(bucketState, { result, same, families, areasOf });
   const typeChanges = typeAreaChanges(projectTypes, areasOf);
   const { familyOf } = bucketState.catalogue;
   const familyChanges = [...families].filter(([a, f]) => familyOf.get(a) !== f);
@@ -306,13 +309,13 @@ async function applyBuckets(config, t) {
   const sheet = bucketSheet();
   const id = config.sheets[sheet];
   const at = new Date().toISOString();
-  const { result, history, groups, examples, areaRows, same, families, typeRows, areasOf } = bucketState;
+  const { result, history, areaRows, same, families, list, typeRows, areasOf } = bucketState;
   // Areas teams added that the grouping placed join the area list, with their bucket.
   const known = new Set(areaRows.map((r) => r.area));
   const added = result.buckets.flatMap((b) => b.areas).filter((a) => !known.has(a));
   const tabs = {
     areas: areasAfterGrouping(areaRows, result.buckets, at, { same, families }),
-    buckets: exampleRows(result, groups, examples),
+    buckets: bucketRowsAfter(result, list),
     "bucket-history": nextHistory(history, result, at),
     // Only when Gemini gave any, so a sheet without the tab doesn't get an empty one.
     ...(areasOf.size ? { "project-types": typesAfterGrouping(typeRows, areasOf) } : {}),
@@ -330,6 +333,71 @@ async function applyBuckets(config, t) {
 
 action(previewButton, "Could not preview the regrouping.", previewBuckets, bucketStatus);
 action(applyButton, "Could not save the buckets.", applyBuckets, bucketStatus);
+
+// Descriptions: a second Gemini workflow, the same copy-and-paste way, writing the description column of the
+// buckets, areas and project-types tabs. It reads what showBuckets read, so it follows the same sheet.
+const descBox = document.getElementById("descriptions");
+const descStatus = descBox.querySelector("output");
+const [descAsk, descPreview, descApply] = ["ask", "preview", "apply"].map((k) => document.getElementById(`descriptions-${k}`));
+const descAnswer = document.getElementById("descriptions-answer");
+const descProposed = document.getElementById("descriptions-proposed");
+let descState = null;
+
+function showDescriptions(tabs) {
+  const items = descriptionItems({ bucketList: tabs.list, areaRows: tabs.areaRows, typeRows: tabs.typeRows });
+  const all = [...items.buckets, ...items.areas, ...items.types];
+  // A bucket missing any level description counts as blank too: the survey would show generic ones.
+  const blank = all.filter((i) => !i.description?.trim() || i.levels?.some((l) => !l.trim())).length;
+  descState = { ...tabs, items, prompt: descriptionPrompt(items) };
+  descAsk.disabled = !all.length;
+  document.getElementById("descriptions-current").replaceChildren(el("p", blank
+    ? `${blank} of ${all.length} buckets, areas and project types have no description or level descriptions yet.`
+    : `All ${all.length} buckets, areas and project types have a description. Ask Gemini to check they still fit.`));
+}
+
+descAsk.addEventListener("click", () => askGemini(descState.prompt, descStatus, descProposed));
+
+async function previewDescriptions(config, t) {
+  if (!descState) await showBuckets(config, t);
+  const parsed = parseDescriptions(descAnswer.value, descState.items);
+  descApply.hidden = true;
+  if (parsed.errors.length) {
+    descProposed.replaceChildren(listOf(parsed.errors));
+    return descStatus.replaceChildren("This answer can't be used as it is. Fix the names above in the answer, or ask Gemini again:");
+  }
+  const changes = descriptionChanges(descState.items, parsed);
+  descState.parsed = parsed;
+  descApply.hidden = !changes.length;
+  const label = { bucket: "Bucket", levels: "Level descriptions of", area: "Area", type: "Project type" };
+  descStatus.replaceChildren(changes.length ? `${changes.length} description${changes.length > 1 ? "s" : ""} would change.` : "Every description stays as it is.");
+  descProposed.replaceChildren(
+    ...(changes.length ? [listOf(changes.map((c) => `${label[c.kind]} ${c.name}: ${c.to}${c.from ? ` (was: ${c.from})` : ""}`))] : []),
+    ...(parsed.missing.length ? [el("p", `No description from Gemini, so kept as they are: ${parsed.missing.join(", ")}.`)] : []),
+  );
+}
+
+async function applyDescriptions(config, t) {
+  const sheet = bucketSheet();
+  const id = config.sheets[sheet];
+  const { list, areaRows, typeRows, parsed } = descState;
+  // Only tabs with rows to describe: rewriting an empty tab would clear its header row.
+  const tabs = Object.fromEntries([
+    ["buckets", list, "bucket", parsed.bucket],
+    ["areas", areaRows, "area", parsed.area],
+    ["project-types", typeRows, "project_type", parsed.type],
+  ].filter(([, rows, , found]) => rows.length && found.size).map(([tab, rows, column, found]) => [tab, withDescriptions(rows, column, found)]));
+  // A bucket line always has both its description and its levels, so the buckets tab is in tabs whenever levels are.
+  if (tabs.buckets) tabs.buckets = withLevels(tabs.buckets, parsed.levels);
+  await withSheet(config, t, id, SHEET_LABEL[sheet], () => replaceTabs(t, id, tabs));
+  descApply.hidden = true;
+  descAnswer.value = "";
+  descProposed.replaceChildren();
+  await showBuckets(config, t);
+  descStatus.replaceChildren(`Saved to the ${SHEET_LABEL[sheet]}.`);
+}
+
+action(descPreview, "Could not preview the descriptions.", previewDescriptions, descStatus);
+action(descApply, "Could not save the descriptions.", applyDescriptions, descStatus);
 
 // The set-up panel is for discipline heads only: whoever may edit the discipline sheet, as Google says. That is
 // its owner and anyone it's shared with for editing, with no list to keep. Everyone else sees only the prototypes.

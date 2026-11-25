@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { compareBuckets, bucketPrompt, parseBuckets, readBuckets, areasToGroup, pending, bucketNames, inBuckets, BUCKET_HEADER, HISTORY_HEADER, nextHistory, aliasesOf, renamedTo, inferHistory, suggestBuckets, demandAreas, areaDemand, areaCritical, bucketGaps, OTHER, surveySections, splitFamilies, fixPrompt, typeDemand, readExamples, bucketsWithoutExamples, exampleRows } from "../src/buckets.js";
+import { compareBuckets, bucketPrompt, parseBuckets, readBuckets, areasToGroup, pending, bucketNames, inBuckets, BUCKET_HEADER, HISTORY_HEADER, nextHistory, aliasesOf, renamedTo, inferHistory, suggestBuckets, demandAreas, areaDemand, areaCritical, bucketGaps, OTHER, surveySections, splitFamilies, fixPrompt, typeDemand, readExamples, bucketsWithoutExamples, bucketRowsAfter } from "../src/buckets.js";
 import { liveLayout } from "../src/sheets.js";
 import { AREA_HEADER } from "../src/areas.js";
 import { CATALOGUE } from "./fixtures/areas.js";
@@ -37,9 +37,9 @@ test("the discipline sheet gets a buckets tab listing the buckets with their exa
   assert.deepEqual(layout.discipline["bucket-history"], { header: HISTORY_HEADER });
   assert.match(layout.aggregate["bucket-history"].formula, /IMPORTRANGE\("D", "bucket-history!A:C"\)/);
   assert.deepEqual(layout.discipline.areas, { header: AREA_HEADER });
-  assert.match(layout.aggregate.areas.formula, /IMPORTRANGE\("D", "areas!A:F"\)/);
+  assert.match(layout.aggregate.areas.formula, /IMPORTRANGE\("D", "areas!A:G"\)/);
   assert.ok(!("bucket-examples" in layout.discipline) && !("bucket-examples" in layout.aggregate));
-  assert.equal(layout.aggregate.buckets.formula, '=QUERY(IMPORTRANGE("D", "buckets!A:E"), "select Col1, Col2, Col3, Col4, Col5 where Col1 is not null", 1)');
+  assert.equal(layout.aggregate.buckets.formula, '=QUERY(IMPORTRANGE("D", "buckets!A:F"), "select Col1, Col2, Col3, Col4, Col5, Col6 where Col1 is not null", 1)');
 });
 
 test("demand and planned adjustments are counted per bucket, so they meet supply, which is per bucket", () => {
@@ -124,15 +124,13 @@ test("the prompt for Gemini lists every area once, the current buckets, and the 
 
 test("Gemini's answer is read leniently, but every area must be in exactly one of exactly 10 buckets", () => {
   const answer = "Here you go:\n```\narea | bucket\n| CSS | Web |\n**Frontend** | Web\nrust | Systems\n```\nWeb | a | b | c | d\nSystems | e | f | g | h";
-  const { examples, same, families, ...parsed } = parseBuckets(answer, ["CSS", "Frontend", "Rust"], 2);
+  const { same, families, ...parsed } = parseBuckets(answer, ["CSS", "Frontend", "Rust"], 2);
   assert.equal(same.size + families.size, 0);
-  assert.equal(examples.size, 2);
   assert.deepEqual(parsed, {
     groups: [{ name: "Systems", areas: ["Rust"] }, { name: "Web", areas: ["CSS", "Frontend"] }],
     errors: [],
   });
-  // Grouping errors come first; missing examples are reported last.
-  const grouping = (r) => r.errors.filter((e) => !e.startsWith("No examples"));
+  const grouping = (r) => r.errors;
   const bad = parseBuckets("CSS | Web\nCSS | Other\nGo | Web", ["CSS", "Frontend"], 1);
   assert.deepEqual(grouping(bad), ["CSS is in more than one bucket: Web, Other", "Not one of the areas: Go", "Missing: Frontend"]);
   const many = Array.from({ length: 11 }, (_, i) => `A${i}`);
@@ -246,27 +244,29 @@ test("picked areas become one survey section per bucket, in picking order", () =
 });
 
 test("examples per working method belong to buckets, read from the buckets tab", () => {
-  assert.deepEqual(BUCKET_HEADER, ["bucket", "operative", "conceptual", "strategic", "comprehensive"]);
+  assert.deepEqual(BUCKET_HEADER, ["bucket", "operative", "conceptual", "strategic", "comprehensive", "description"]);
   const examples = readExamples([{ bucket: "Web", operative: "a", conceptual: "b", strategic: "c", comprehensive: "d" }, { bucket: "", operative: "x" }]);
   assert.deepEqual([...examples], [["Web", ["a", "b", "c", "d"]]]);
   assert.deepEqual(bucketsWithoutExamples(["Web", "Data"], [{ bucket: "Web", operative: "a", conceptual: "b", strategic: "c", comprehensive: "" }]), ["Web", "Data"]);
 });
 
-test("the Gemini prompt also asks for four examples per bucket, and the answer gives them back", () => {
-  assert.match(bucketPrompt(["Rust"], []), /bucket \| operative \| conceptual \| strategic \| comprehensive/);
-  const answer = "CSS | Web\nFrontend | Web\nRust | Systems\n\n| bucket | operative | conceptual | strategic | comprehensive |\n| Web | Build pages | Plan a journey | Set standards | Shape government web |\nSystems | Write Rust | Design a parser | Pick the stack | Shape systems work |";
-  const { groups, errors, examples } = parseBuckets(answer, ["CSS", "Frontend", "Rust"], 2);
-  assert.deepEqual(errors, []);
-  assert.deepEqual(groups.map((g) => g.name), ["Systems", "Web"]);
-  assert.deepEqual(examples.get("Web"), ["Build pages", "Plan a journey", "Set standards", "Shape government web"]);
-  assert.deepEqual(parseBuckets("CSS | Web\nFrontend | Web\nRust | Systems", ["CSS", "Frontend", "Rust"], 2).errors, ["No examples for: Systems, Web"]);
+test("regrouping no longer asks for level descriptions: the descriptions workflow keeps them", () => {
+  assert.doesNotMatch(bucketPrompt(["Rust"], []), /operative/);
+  // A stray examples line is ignored, never an error.
+  assert.deepEqual(parseBuckets("CSS | Web\nWeb | a | b | c | d", ["CSS"], 1).errors, []);
 });
 
-test("examples are saved under the names the buckets end up with", () => {
-  const proposed = [{ name: "Frontend", areas: ["CSS", "Frontend"] }];
-  const result = compareBuckets([{ name: "Web", areas: ["CSS", "Frontend"] }], proposed);
-  assert.deepEqual(exampleRows(result, proposed, new Map([["Frontend", ["a", "b", "c", "d"]]])), [
-    { bucket: "Frontend", operative: "a", conceptual: "b", strategic: "c", comprehensive: "d" },
+test("a regrouped bucket keeps its row from the bucket it came from, renamed or not; a new one starts blank", () => {
+  const proposed = [{ name: "Web", areas: ["CSS"] }, { name: "Systems", areas: ["Rust"] }, { name: "Data", areas: ["SQL"] }];
+  const result = compareBuckets([{ name: "Web", areas: ["CSS"] }, { name: "Native", areas: ["Rust"] }], proposed);
+  const list = [
+    { bucket: "Web", operative: "a", conceptual: "b", strategic: "c", comprehensive: "d", description: "Builds web pages." },
+    { bucket: "Native", operative: "e", conceptual: "f", strategic: "g", comprehensive: "h", description: "Old." },
+  ];
+  assert.deepEqual(bucketRowsAfter(result, list), [
+    list[0],
+    { ...list[1], bucket: "Systems" },
+    { bucket: "Data", operative: "", conceptual: "", strategic: "", comprehensive: "", description: "" },
   ]);
 });
 
@@ -471,10 +471,10 @@ test("the prompt keeps families narrow and forbids handing a current bucket's na
 });
 
 test("with project types, the prompt asks for a sixth part: the areas each type pre-fills", () => {
-  assert.match(bucketPrompt(["CSS"], []), /five parts/);
+  assert.match(bucketPrompt(["CSS"], []), /four parts/);
   const types = [{ name: "Discovery", english: "", areas: ["CSS"] }];
   const text = bucketPrompt(["CSS"], [], new Map(), new Map(), new Map(), { projectTypes: types });
-  assert.match(text, /six parts/);
+  assert.match(text, /five parts/);
   assert.match(text, /^type \| project type \| area; area$/m);
   // Type lines are no area lines, even with no areas.
   const answer = "CSS | Web\nWeb | a | b | c | d\ntype | Discovery | CSS\ntype | Others |";

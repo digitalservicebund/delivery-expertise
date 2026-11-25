@@ -4,7 +4,7 @@ import { AREA_HEADER, readAreas, areaIssues, areasAfterGrouping, canonicalArea, 
 import { AREA_ROWS } from "./fixtures/areas.js";
 
 test("the areas tab has the area, its bucket, the support it can draw on and when it was grouped", () => {
-  assert.deepEqual(AREA_HEADER, ["area", "bucket", "support", "grouped_at", "same_as", "family"]);
+  assert.deepEqual(AREA_HEADER, ["area", "bucket", "support", "grouped_at", "same_as", "family", "description"]);
 });
 
 test("the areas tab gives the areas, their names, which bucket each is in and the buckets in order", () => {
@@ -59,11 +59,11 @@ test("applying a grouping sets each area's bucket and adds new areas, keeping ev
   ];
   const groups = [{ name: "Web", areas: ["React", "Vue"] }, { name: "Services", areas: ["Go"] }];
   assert.deepEqual(areasAfterGrouping(rows, groups, "T"), [
-    { area: "React", bucket: "Web", support: "cop", grouped_at: "T", notes: "keep me", same_as: "", family: "" },
-    { area: "Go", bucket: "Services", support: "platform", grouped_at: "T", notes: "", same_as: "", family: "" },
+    { area: "React", bucket: "Web", support: "cop", grouped_at: "T", notes: "keep me", same_as: "", family: "", description: "" },
+    { area: "Go", bucket: "Services", support: "platform", grouped_at: "T", notes: "", same_as: "", family: "", description: "" },
     // Left alone: the grouping never drops an area, so this only happens when it was edited in meanwhile.
-    { area: "Cobol", bucket: "Legacy", support: "cop", grouped_at: "old", notes: "not in the grouping", same_as: "", family: "" },
-    { area: "Vue", bucket: "Web", support: "cop", grouped_at: "T", notes: "", same_as: "", family: "" },
+    { area: "Cobol", bucket: "Legacy", support: "cop", grouped_at: "old", notes: "not in the grouping", same_as: "", family: "", description: "" },
+    { area: "Vue", bucket: "Web", support: "cop", grouped_at: "T", notes: "", same_as: "", family: "", description: "" },
   ]);
 });
 
