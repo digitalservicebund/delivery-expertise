@@ -315,7 +315,7 @@ export function bucketPrompt(areas, current, demand = new Map(), critical = new 
       "Be somewhat more cautious about renaming, splitting or merging them: prefer keeping their name and core areas. You can still change them where the areas or demand clearly call for it.",
     ] : []),
     "",
-    `Answer in five parts. First, the ${count} bucket names, numbered 1 to ${count}, one per line, as: 1. name`,
+    `Answer in ${projectTypes.length ? "six" : "five"} parts. First, the ${count} bucket names, numbered 1 to ${count}, one per line, as: 1. name`,
     `Before going on, count them: exactly ${count}. With more, merge the two most closely related; with fewer, split the largest. Repeat until there are ${count}.`,
     "Then check every pair: if one bucket is a subset of another, or their names could swap, merge them and split elsewhere.",
     "",
@@ -335,6 +335,12 @@ export function bucketPrompt(areas, current, demand = new Map(), critical = new 
     "Keep families narrow: one tight theme, never two joined by \"&\" (not Governance & compliance), and never so broad that a family becomes a shadow bucket covering most of its bucket. Split an existing family that has grown too broad.",
     "A family of one area is fine, and better than stretching a family's meaning to hold an area that doesn't quite fit. Formatted as:",
     "family | area | family",
+    ...(projectTypes.length ? [
+      "",
+      "Sixth, one line per project type listed above, with the areas the survey should pre-fill for a project of that type: the ones such a project usually needs, typically three to eight. Formatted as:",
+      "type | project type | area; area",
+      "Use the project type names exactly as listed and only area names from the list, never another name for one. Keep a type's current areas where they still fit, add areas that now fit better, and drop ones that no longer do. A type that needs no particular areas (such as Others) gets an empty list.",
+    ] : []),
     "No other text."
   ].join("\n");
 }
@@ -354,9 +360,12 @@ export function fixPrompt(errors, groups, count) {
         : `Split the largest ones until there are exactly ${count}.`,
     ]),
     "",
-    `Answer again in full, in the same five parts and format, with exactly ${count} buckets. Count them before answering.`,
+    `Answer again in full, in the same parts and format, with exactly ${count} buckets. Count them before answering.`,
   ].join("\n");
 }
+
+// The cells of one line of a pasted Gemini answer, tolerating markdown tables, bold and code.
+export const cellsOf = (line) => line.replace(/[*`]/g, "").trim().replace(/^\||\|$/g, "").split("|").map((c) => c.trim());
 
 // Reads the pasted answer back: one "area | bucket" per line, tolerating markdown tables, bold, code fences and
 // chatter, then "bucket | operative | conceptual | strategic | comprehensive" lines with examples. Area names match
@@ -372,7 +381,7 @@ export function parseBuckets(text, areas, count = Math.min(BUCKET_COUNT, areas.l
   const families = new Map();
   const tagged = [];
   for (const line of text.split("\n")) {
-    const cells = line.replace(/[*`]/g, "").trim().replace(/^\||\|$/g, "").split("|").map((c) => c.trim());
+    const cells = cellsOf(line);
     const tag = cells[0]?.toLowerCase();
     if (cells.length === 3 && (tag === "same" || tag === "family") && cells[1] && cells[2]) {
       // The format lines themselves ("same | other name | area") name no area, so they are skipped like headers.
@@ -383,6 +392,8 @@ export function parseBuckets(text, areas, count = Math.min(BUCKET_COUNT, areas.l
       examples.set(cells[0].toLowerCase(), cells.slice(1));
       continue;
     }
+    // Project-type lines ("type | project type | areas") are read by parseTypeAreas (src/projecttypes.js).
+    if (tag === "type") continue;
     if (cells.length !== 2 || !cells[0] || !cells[1] || /^-+$/.test(cells[0])) continue;
     if (cells[0].toLowerCase() === "area" && cells[1].toLowerCase() === "bucket") continue;
     const area = canonical.get(cells[0].toLowerCase());

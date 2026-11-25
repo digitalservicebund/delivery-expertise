@@ -7,7 +7,7 @@ import { liveLayout } from "./sheets.js";
 import { FORM_INFO, formItems, formRequests, branchRequest, supplyFormula } from "./icform.js";
 import { readAreas, areaIssues, areasAfterGrouping, canonicalDemand, likelyDuplicates } from "./areas.js";
 import { formRows } from "./prefill.js";
-import { PROJECT_TYPE_HEADER, PROJECT_TYPE_SEED, readProjectTypes, projectTypeIssues, dummyProjectTypes } from "./projecttypes.js";
+import { PROJECT_TYPE_HEADER, PROJECT_TYPE_SEED, readProjectTypes, projectTypeIssues, dummyProjectTypes, parseTypeAreas, typesAfterGrouping, typeAreaChanges } from "./projecttypes.js";
 import { compareBuckets, bucketPrompt, parseBuckets, readBuckets, areasToGroup, pending, bucketNames, nextHistory, aliasesOf, inferHistory, bucketsWithoutExamples, exampleRows, areaDemand, areaCritical, bucketGaps, splitFamilies, fixPrompt, typeDemand, BUCKET_COUNT } from "./buckets.js";
 
 const mode = await currentMode();
@@ -94,7 +94,7 @@ async function readBucketTabs(config, t, sheet = "discipline") {
   const id = config.sheets[sheet];
   const { rows } = await withSheet(config, t, id, SHEET_LABEL[sheet], () => readTabs(t, id, ["buckets", "bucket-history", "areas", "project-types"]));
   const catalogue = readAreas(rows.areas);
-  return { list: rows.buckets, history: rows["bucket-history"], areaRows: rows.areas, catalogue, names: bucketNames(rows.buckets, catalogue.bucketRows), projectTypes: readProjectTypes(rows["project-types"]) };
+  return { list: rows.buckets, history: rows["bucket-history"], areaRows: rows.areas, catalogue, names: bucketNames(rows.buckets, catalogue.bucketRows), typeRows: rows["project-types"], projectTypes: readProjectTypes(rows["project-types"]) };
 }
 
 // Retroactive bucket history: every bucket the IC form ever asked about is a column of its responses. Former ones
@@ -217,12 +217,12 @@ async function readDemand(config, t) {
 }
 
 async function showBuckets(config, t) {
-  const [{ history, areaRows, catalogue, projectTypes }, rawDemand] = await Promise.all([readBucketTabs(config, t, bucketSheet()), readDemand(config, t)]);
+  const [{ history, areaRows, catalogue, typeRows, projectTypes }, rawDemand] = await Promise.all([readBucketTabs(config, t, bucketSheet()), readDemand(config, t)]);
   // Answers naming another name for an area count for that area, so other names are never grouped on their own.
   const demand = canonicalDemand(rawDemand, catalogue.aliases);
   const current = catalogue.bucketRows;
   const areas = areasToGroup(demand, current, catalogue.names);
-  bucketState = { current, history, demand, areas, areaRows, catalogue };
+  bucketState = { current, history, demand, areas, areaRows, catalogue, typeRows, projectTypes };
   const { ungrouped, stale, empty } = pending(current, areas);
   const prompt = document.getElementById("buckets-prompt");
   prompt.hidden = !(empty || ungrouped.length || stale);
@@ -260,8 +260,11 @@ askButton.addEventListener("click", () => {
 async function previewBuckets(config, t) {
   // Reading may have failed when the panel opened, say before a sheet was handed to the app: try again.
   if (!bucketState) await showBuckets(config, t);
-  const { current, areas } = bucketState;
-  const { groups, errors, examples, same, families } = parseBuckets(answerBox.value, areas);
+  const { current, areas, projectTypes } = bucketState;
+  const parsed = parseBuckets(answerBox.value, areas);
+  const { groups, examples, same, families } = parsed;
+  const { areasOf, errors: typeErrors } = parseTypeAreas(answerBox.value, projectTypes, areas);
+  const errors = [...parsed.errors, ...typeErrors];
   if (errors.length) {
     applyButton.hidden = true;
     const fix = fixPrompt(errors, groups, Math.min(BUCKET_COUNT, areas.length));
@@ -271,7 +274,8 @@ async function previewBuckets(config, t) {
     return bucketStatus.replaceChildren("This answer can't be used as it is. A follow-up for Gemini is copied, or edit the answer here:");
   }
   const result = compareBuckets(readBuckets(current).groups, groups);
-  Object.assign(bucketState, { result, groups, examples, same, families });
+  Object.assign(bucketState, { result, groups, examples, same, families, areasOf });
+  const typeChanges = typeAreaChanges(projectTypes, areasOf);
   const { familyOf } = bucketState.catalogue;
   const familyChanges = [...families].filter(([a, f]) => familyOf.get(a) !== f);
   // Families the new grouping splits across buckets: allowed, but worth a look before applying.
@@ -285,8 +289,12 @@ async function previewBuckets(config, t) {
     ...result.renamed.map((c) => `Renamed: ${c.from} → ${c.to}`),
     ...result.created.map((c) => `New bucket: ${c.name}${c.splitFrom ? `, split from ${c.splitFrom}` : ""}`),
     ...result.removed.map((c) => `Bucket gone: ${c.name}${c.mergedInto ? `, merged into ${c.mergedInto}` : ""}`),
+    ...typeChanges.map((c) => `Project type ${c.type}: ${[
+      ...(c.added.length ? [`pre-fills ${c.added.join(", ")}`] : []),
+      ...(c.dropped.length ? [`no longer ${c.dropped.join(", ")}`] : []),
+    ].join("; ")}`),
   ];
-  const unchanged = result.unchanged && !same.size && !familyChanges.length;
+  const unchanged = result.unchanged && !same.size && !familyChanges.length && !typeChanges.length;
   bucketStatus.replaceChildren(unchanged ? "Regrouping changes nothing." : `${changes.length} change${changes.length > 1 ? "s" : ""}.`);
   applyButton.hidden = unchanged;
   document.getElementById("buckets-proposed").replaceChildren(...(unchanged ? [] : [
@@ -298,11 +306,17 @@ async function applyBuckets(config, t) {
   const sheet = bucketSheet();
   const id = config.sheets[sheet];
   const at = new Date().toISOString();
-  const { result, history, groups, examples, areaRows, same, families } = bucketState;
+  const { result, history, groups, examples, areaRows, same, families, typeRows, areasOf } = bucketState;
   // Areas teams added that the grouping placed join the area list, with their bucket.
   const known = new Set(areaRows.map((r) => r.area));
   const added = result.buckets.flatMap((b) => b.areas).filter((a) => !known.has(a));
-  const tabs = { areas: areasAfterGrouping(areaRows, result.buckets, at, { same, families }), buckets: exampleRows(result, groups, examples), "bucket-history": nextHistory(history, result, at) };
+  const tabs = {
+    areas: areasAfterGrouping(areaRows, result.buckets, at, { same, families }),
+    buckets: exampleRows(result, groups, examples),
+    "bucket-history": nextHistory(history, result, at),
+    // Only when Gemini gave any, so a sheet without the tab doesn't get an empty one.
+    ...(areasOf.size ? { "project-types": typesAfterGrouping(typeRows, areasOf) } : {}),
+  };
   await withSheet(config, t, id, SHEET_LABEL[sheet], () => replaceTabs(t, id, tabs));
   applyButton.hidden = true;
   answerBox.value = "";

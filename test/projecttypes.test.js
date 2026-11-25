@@ -1,6 +1,30 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { PROJECT_TYPE_HEADER, PROJECT_TYPE_SEED, MAX_PROJECT_TYPES, readProjectTypes, typesByArea, projectTypeIssues, dummyProjectTypes } from "../src/projecttypes.js";
+import { PROJECT_TYPE_HEADER, PROJECT_TYPE_SEED, MAX_PROJECT_TYPES, readProjectTypes, typesByArea, projectTypeIssues, dummyProjectTypes, parseTypeAreas, typesAfterGrouping, typeAreaChanges } from "../src/projecttypes.js";
+
+test("Gemini's project-type lines give each type's areas, matched case-insensitively; unknown names are errors", () => {
+  const types = [{ name: "Discovery", areas: ["Prototyping"] }, { name: "Others", areas: [] }, { name: "Umsetzung", areas: ["CSS"] }];
+  const answer = "type | project type | area; area\n**type | discovery | prototyping; user research**\n| type | Others | |\ntype | Nope | CSS\ntype | Umsetzung | CSS; Cobol";
+  const { areasOf, errors } = parseTypeAreas(answer, types, ["Prototyping", "User research", "CSS"]);
+  assert.deepEqual([...areasOf], [["Discovery", ["Prototyping", "User research"]], ["Others", []], ["Umsetzung", ["CSS"]]]);
+  assert.deepEqual(errors, ["Not one of the project types: Nope", "Umsetzung names areas that aren't on the list: Cobol"]);
+});
+
+test("applying keeps every other column, and a type Gemini left out keeps its areas", () => {
+  const rows = [
+    { project_type: "Discovery", areas: "Prototyping", english_translation: "", description: "Finds out." },
+    { project_type: "Umsetzung", areas: "CSS", english_translation: "Implementation", description: "" },
+    { project_type: "Discovery", areas: "CSS", english_translation: "", description: "" },
+  ];
+  assert.deepEqual(typesAfterGrouping(rows, new Map([["Discovery", ["Prototyping", "User research"]]])), [
+    { project_type: "Discovery", areas: "Prototyping; User research", english_translation: "", description: "Finds out." },
+    rows[1],
+    { project_type: "Discovery", areas: "", english_translation: "", description: "" },
+  ]);
+  assert.deepEqual(typeAreaChanges(readProjectTypes(rows), new Map([["Discovery", ["Prototyping", "User research"]], ["Umsetzung", ["CSS"]]])), [
+    { type: "Discovery", added: ["User research"], dropped: ["CSS"] },
+  ]);
+});
 
 test("the project-types tab has a type, its areas, an optional English translation and an optional description", () => {
   assert.deepEqual(PROJECT_TYPE_HEADER, ["project_type", "areas", "english_translation", "description"]);

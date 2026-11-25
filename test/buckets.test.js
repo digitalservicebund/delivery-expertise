@@ -469,3 +469,14 @@ test("the prompt keeps families narrow and forbids handing a current bucket's na
   assert.match(text, /family of one/i);
   assert.match(text, /never give a current bucket's name to a different bucket/i);
 });
+
+test("with project types, the prompt asks for a sixth part: the areas each type pre-fills", () => {
+  assert.match(bucketPrompt(["CSS"], []), /five parts/);
+  const types = [{ name: "Discovery", english: "", areas: ["CSS"] }];
+  const text = bucketPrompt(["CSS"], [], new Map(), new Map(), new Map(), { projectTypes: types });
+  assert.match(text, /six parts/);
+  assert.match(text, /^type \| project type \| area; area$/m);
+  // Type lines are no area lines, even with no areas.
+  const answer = "CSS | Web\nWeb | a | b | c | d\ntype | Discovery | CSS\ntype | Others |";
+  assert.deepEqual(parseBuckets(answer, ["CSS"], 1).errors, []);
+});

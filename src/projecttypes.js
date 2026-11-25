@@ -4,6 +4,8 @@
 // or commas. An area can sit under several types. Types are named in German, as the portfolio names them; the optional
 // English translation shows under the name, and the optional description (what the type means) as its tooltip. Imported into the aggregate sheet like the areas
 // tab. Pure, so it runs in tests.
+import { cellsOf } from "./buckets.js";
+
 export const PROJECT_TYPE_HEADER = ["project_type", "areas", "english_translation", "description"];
 export const MAX_PROJECT_TYPES = 5;
 // What Set up live sheets writes to an empty tab: the types, with their areas left for discipline heads to fill in.
@@ -87,4 +89,47 @@ export function projectTypeIssues(rows, areaNames) {
   const unknown = [...new Set(types.flatMap((t) => t.areas).filter((a) => !known.has(a.toLowerCase())))];
   if (unknown.length) issues.push(`Not on the areas tab, so never suggested: ${unknown.join(", ")}`);
   return issues;
+}
+
+// The regrouping keeps each type's areas up to date too: Gemini's answer has one "type | project type | area; area"
+// line per type (bucketPrompt in src/buckets.js). Types and areas match case-insensitively. Returns
+// { areasOf: type -> its areas, errors }; any error means don't apply it. A type with no line keeps its areas.
+export function parseTypeAreas(text, types, areas) {
+  const typeOf = new Map(types.map((t) => [t.name.toLowerCase(), t.name]));
+  const areaOf = new Map(areas.map((a) => [a.toLowerCase(), a]));
+  const areasOf = new Map();
+  const errors = [];
+  for (const line of text.split("\n")) {
+    const cells = cellsOf(line);
+    // The format line itself names no type, so it is skipped like a header.
+    if (cells[0]?.toLowerCase() !== "type" || cells.length > 3 || !cells[1] || cells[1].toLowerCase() === "project type") continue;
+    const type = typeOf.get(cells[1].toLowerCase());
+    if (!type) { errors.push(`Not one of the project types: ${cells[1]}`); continue; }
+    const named = split(cells[2]);
+    const unknown = named.filter((a) => !areaOf.has(a.toLowerCase()));
+    if (unknown.length) errors.push(`${type} names areas that aren't on the list: ${unknown.join(", ")}`);
+    areasOf.set(type, [...new Set(named.map((a) => areaOf.get(a.toLowerCase())).filter(Boolean))]);
+  }
+  return { areasOf, errors };
+}
+
+// The project-types tab with the new areas (areasOf: from parseTypeAreas), every other column kept. A type named on
+// several rows gets its areas on the first, the others' cleared, as readProjectTypes merges them.
+export function typesAfterGrouping(rows, areasOf) {
+  const done = new Set();
+  return rows.map((r) => {
+    const name = r.project_type?.trim();
+    if (!areasOf.has(name)) return r;
+    const areas = done.has(name) ? "" : areasOf.get(name).join("; ");
+    done.add(name);
+    return { ...r, areas };
+  });
+}
+
+// What applying would change, for the preview: per type (types: from readProjectTypes), the areas added and dropped.
+export function typeAreaChanges(types, areasOf) {
+  return types.filter((t) => areasOf.has(t.name)).map((t) => {
+    const after = areasOf.get(t.name);
+    return { type: t.name, added: after.filter((a) => !t.areas.includes(a)), dropped: t.areas.filter((a) => !after.includes(a)) };
+  }).filter((c) => c.added.length || c.dropped.length);
 }
