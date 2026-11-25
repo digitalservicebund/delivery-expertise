@@ -8,7 +8,7 @@ import { FORM_INFO, formItems, formRequests, branchRequest, supplyFormula } from
 import { readAreas, areaIssues, areasAfterGrouping, canonicalDemand, likelyDuplicates } from "./areas.js";
 import { formRows } from "./prefill.js";
 import { PROJECT_TYPE_HEADER, PROJECT_TYPE_SEED, readProjectTypes, projectTypeIssues, dummyProjectTypes } from "./projecttypes.js";
-import { compareBuckets, bucketPrompt, parseBuckets, readBuckets, areasToGroup, pending, bucketNames, nextHistory, aliasesOf, inferHistory, bucketsWithoutExamples, exampleRows, areaDemand, areaCritical, bucketGaps, splitFamilies, fixPrompt, BUCKET_COUNT } from "./buckets.js";
+import { compareBuckets, bucketPrompt, parseBuckets, readBuckets, areasToGroup, pending, bucketNames, nextHistory, aliasesOf, inferHistory, bucketsWithoutExamples, exampleRows, areaDemand, areaCritical, bucketGaps, splitFamilies, fixPrompt, typeDemand, BUCKET_COUNT } from "./buckets.js";
 
 const mode = await currentMode();
 bar(mode);
@@ -92,9 +92,9 @@ async function readDomains(config, t) {
 // sheet: "discipline" holds the real buckets; "prototype" the dummy ones, written by the panel in prototype mode.
 async function readBucketTabs(config, t, sheet = "discipline") {
   const id = config.sheets[sheet];
-  const { rows } = await withSheet(config, t, id, SHEET_LABEL[sheet], () => readTabs(t, id, ["buckets", "bucket-history", "areas"]));
+  const { rows } = await withSheet(config, t, id, SHEET_LABEL[sheet], () => readTabs(t, id, ["buckets", "bucket-history", "areas", "project-types"]));
   const catalogue = readAreas(rows.areas);
-  return { list: rows.buckets, history: rows["bucket-history"], areaRows: rows.areas, catalogue, names: bucketNames(rows.buckets, catalogue.bucketRows) };
+  return { list: rows.buckets, history: rows["bucket-history"], areaRows: rows.areas, catalogue, names: bucketNames(rows.buckets, catalogue.bucketRows), projectTypes: readProjectTypes(rows["project-types"]) };
 }
 
 // Retroactive bucket history: every bucket the IC form ever asked about is a column of its responses. Former ones
@@ -217,7 +217,7 @@ async function readDemand(config, t) {
 }
 
 async function showBuckets(config, t) {
-  const [{ history, areaRows, catalogue }, rawDemand] = await Promise.all([readBucketTabs(config, t, bucketSheet()), readDemand(config, t)]);
+  const [{ history, areaRows, catalogue, projectTypes }, rawDemand] = await Promise.all([readBucketTabs(config, t, bucketSheet()), readDemand(config, t)]);
   // Answers naming another name for an area count for that area, so other names are never grouped on their own.
   const demand = canonicalDemand(rawDemand, catalogue.aliases);
   const current = catalogue.bucketRows;
@@ -233,7 +233,7 @@ async function showBuckets(config, t) {
       : "The grouping is more than a quarter old. Ask Gemini to regroup, to see whether it still fits.";
   const { groups, generatedAt } = readBuckets(current);
   bucketState.prompt = bucketPrompt(areas, groups, areaDemand(demand), areaCritical(demand), bucketGaps(demand, history),
-    { familyOf: catalogue.familyOf, duplicates: likelyDuplicates(areas) });
+    { familyOf: catalogue.familyOf, duplicates: likelyDuplicates(areas), projectTypes, typeDemand: typeDemand(demand) });
   askButton.disabled = false;
   document.getElementById("buckets-current").replaceChildren(...(groups.length
     ? [el("p", `Current buckets${generatedAt ? `, grouped ${generatedAt.slice(0, 10)}` : ""}:`), bucketList(groups)]

@@ -206,7 +206,41 @@ export function bucketGaps(demand, history) {
   return new Map([...teams].map(([b, t]) => [b, t.size]));
 }
 
+// People asked for per project type in the latest survey round, like areaDemand: a row naming several types splits
+// its people evenly across them. Rows naming no type count for none.
+export function typeDemand(demand) {
+  const latest = demand.map((r) => r.quarter ?? "").sort().at(-1);
+  const out = new Map();
+  for (const r of demand.filter((r) => (r.quarter ?? "") === latest)) {
+    const people = Number(r.people);
+    const types = String(r.project_types ?? "").split(";").map((t) => t.trim()).filter(Boolean);
+    if (!Number.isFinite(people) || !types.length) continue;
+    for (const t of types) out.set(t, (out.get(t) ?? 0) + people / types.length);
+  }
+  return out;
+}
+
 const percent = (n, total) => `${Math.round((100 * n) / total)}%`;
+
+// A project type's line in the prompt: its translation, its share of demand, and the areas it usually needs.
+function typeLine({ name, english, areas }, demand, total) {
+  const notes = [...(english ? [english] : []), ...(total ? [percent(demand.get(name) ?? 0, total)] : [])];
+  return `- ${name}${notes.length ? ` (${notes.join(", ")})` : ""}${areas.length ? `: ${areas.join(", ")}` : ""}`;
+}
+
+// The project types section: the portfolio's own terms, for naming buckets that mainly serve one or two of them.
+function typeSection(types, demand) {
+  if (!types.length) return [];
+  const total = [...demand.values()].reduce((a, b) => a + b, 0);
+  return [
+    "",
+    `Project types: the kinds of project the portfolio runs, named in its official terms${total ? ", each with its share of the people projects asked for last quarter" : ""}, and the areas each usually needs:`,
+    ...types.map((t) => typeLine(t, demand, total)),
+    "Where a bucket's areas mainly serve one project type, or a few closely related ones, and those types carry a meaningful share of demand, consider using the official term in the bucket's name instead of an outside term that means much the same (for example a consultancy's jargon).",
+    "This is a hint, not a rule: use a type's name only where it fits the bucket's skills, and never name a bucket after a type with little demand.",
+    "Bucket names are in English: where a type has an English translation (in brackets above), use the translation, never the German term, whether the type is one word or several. A type with no translation (such as Discovery) is already English.",
+  ];
+}
 // What an area's line in the prompt says about it: its share of demand, and the teams it is critical for.
 function areaNotes(area, demand, total, critical) {
   const teams = critical.get(area) ?? 0;
@@ -226,9 +260,13 @@ function areaNotes(area, demand, total, critical) {
 // opts.duplicates: likely pairs of names for the same area (likelyDuplicates in src/areas.js), for Gemini to confirm.
 // gaps: from bucketGaps. Current buckets critically understaffed are marked, so Gemini weighs keeping them
 // recognisable: a weighting, not a lock, as the data may still call for a change.
+// opts.projectTypes: from readProjectTypes, weighted by opts.typeDemand (typeDemand), so a bucket serving a
+// heavily demanded type may take the portfolio's own term for it rather than an outside one.
+// Demand sizing alone pushes Gemini to split a busy field into near-duplicates (Frontend development + React), so
+// the prompt ranks distinct buckets above evenly sized ones.
 // Models drift off a stated count, so the prompt makes it hard to: the names come first as a numbered list, every
 // later line may use only those, and the answer ends with a count check. parseBuckets still enforces it.
-export function bucketPrompt(areas, current, demand = new Map(), critical = new Map(), gaps = new Map(), { familyOf = new Map(), duplicates = [] } = {}, count = Math.min(BUCKET_COUNT, areas.length)) {
+export function bucketPrompt(areas, current, demand = new Map(), critical = new Map(), gaps = new Map(), { familyOf = new Map(), duplicates = [], projectTypes = [], typeDemand = new Map() } = {}, count = Math.min(BUCKET_COUNT, areas.length)) {
   const inList = new Set(areas);
   const families = [...Map.groupBy([...familyOf].filter(([a]) => inList.has(a)), ([, f]) => f)].map(([f, pairs]) => `${f}: ${pairs.map(([a]) => a).join(", ")}`);
   const total = [...demand.values()].reduce((a, b) => a + b, 0);
@@ -242,11 +280,17 @@ export function bucketPrompt(areas, current, demand = new Map(), critical = new 
     `Group these areas of software engineering expertise into exactly ${count} buckets of related skills, as an engineering discipline would staff and train for them. Some names are German.`,
     `The number of buckets is fixed at exactly ${count}: not ${count - 1}, not ${count + 1}. An answer with any other number is unusable.`,
     "Every area goes in exactly one bucket, except another name for an area (see below), and no bucket is empty. Keep a current bucket's name, spelled exactly the same, wherever the bucket still fits: every name you change is a rename. Name new buckets after their most typical area.",
+    ...(current.length ? [
+      "A bucket keeps its identity through its name: never give a current bucket's name to a different bucket, and never rename two buckets so that one takes over the other's name or scope (such as renaming Backend development to APIs & integration and Data & AI to Backend development).",
+      "Where the areas need to shift, move areas and families between buckets and keep the names; rename only a bucket whose own core areas stay with it.",
+    ] : []),
     ...(total ? [
       "Each area shows its share of demand: the people projects asked for last quarter. Size the buckets by demand, so each holds a comparable share:",
       "split a related field into several buckets where its areas are in high demand, and merge related fields into one bucket where demand for them is low.",
       "Areas with little or no demand never get a bucket of their own; put them with their nearest related areas. Don't keep a current bucket only because it exists.",
     ] : []),
+    "Every bucket must be clearly distinct from every other: a person should never wonder which of two buckets they belong in. Never make a bucket a subset or specialisation of another, such as a framework, language or tool next to the field it belongs to (React next to Frontend development, Kubernetes next to Platform engineering). A technology goes inside its field's bucket.",
+    "This overrides sizing by demand: where splitting a busy field would give two such overlapping buckets, keep the field whole and split or separate something else instead.",
     ...(anyCritical ? [
       "Some areas say how many project teams marked them critical: the team can't deliver without them. Whatever their demand, put each in a bucket of closely related areas whose name makes it easy to recognise, never in an unrelated catch-all bucket.",
     ] : []),
@@ -264,6 +308,7 @@ export function bucketPrompt(areas, current, demand = new Map(), critical = new 
       "These look like the same area under different names. Confirm the ones that are, and look for others:",
       ...duplicates.map(([a, b]) => `${a} ~ ${b}`),
     ] : []),
+    ...typeSection(projectTypes, typeDemand),
     ...(anyGap ? [
       "",
       "Buckets marked critically understaffed are ones project teams can't currently deliver without, and the discipline is staffing for them under those names.",
@@ -272,6 +317,7 @@ export function bucketPrompt(areas, current, demand = new Map(), critical = new 
     "",
     `Answer in five parts. First, the ${count} bucket names, numbered 1 to ${count}, one per line, as: 1. name`,
     `Before going on, count them: exactly ${count}. With more, merge the two most closely related; with fewer, split the largest. Repeat until there are ${count}.`,
+    "Then check every pair: if one bucket is a subset of another, or their names could swap, merge them and split elsewhere.",
     "",
     "Second, one line per area, formatted as: area | bucket",
     "Use the area names exactly as listed, and only the bucket names from your numbered list, spelled the same.",
@@ -285,7 +331,9 @@ export function bucketPrompt(areas, current, demand = new Map(), critical = new 
     "same | other name | area",
     "Such an other name gets no line in the second part. Leave this part empty if there are none.",
     "",
-    "Fifth, one line per area giving its family: a short name for a few closely related areas, finer than a bucket, keeping the families above where they still fit. Formatted as:",
+    "Fifth, one line per area giving its family: a short name for a few closely related areas, finer than a bucket, keeping the families above where they still fit.",
+    "Keep families narrow: one tight theme, never two joined by \"&\" (not Governance & compliance), and never so broad that a family becomes a shadow bucket covering most of its bucket. Split an existing family that has grown too broad.",
+    "A family of one area is fine, and better than stretching a family's meaning to hold an area that doesn't quite fit. Formatted as:",
     "family | area | family",
     "No other text."
   ].join("\n");

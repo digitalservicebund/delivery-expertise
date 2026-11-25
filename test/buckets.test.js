@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { compareBuckets, bucketPrompt, parseBuckets, readBuckets, areasToGroup, pending, bucketNames, inBuckets, BUCKET_HEADER, HISTORY_HEADER, nextHistory, aliasesOf, renamedTo, inferHistory, suggestBuckets, demandAreas, areaDemand, areaCritical, bucketGaps, OTHER, surveySections, splitFamilies, fixPrompt, readExamples, bucketsWithoutExamples, exampleRows } from "../src/buckets.js";
+import { compareBuckets, bucketPrompt, parseBuckets, readBuckets, areasToGroup, pending, bucketNames, inBuckets, BUCKET_HEADER, HISTORY_HEADER, nextHistory, aliasesOf, renamedTo, inferHistory, suggestBuckets, demandAreas, areaDemand, areaCritical, bucketGaps, OTHER, surveySections, splitFamilies, fixPrompt, typeDemand, readExamples, bucketsWithoutExamples, exampleRows } from "../src/buckets.js";
 import { liveLayout } from "../src/sheets.js";
 import { AREA_HEADER } from "../src/areas.js";
 import { CATALOGUE } from "./fixtures/areas.js";
@@ -437,4 +437,35 @@ test("families split across buckets are listed, for the preview", () => {
   const groups = [{ name: "Web", areas: ["React", "Vue"] }, { name: "Backend", areas: ["TypeScript", "Go"] }];
   const familyOf = new Map([["React", "Web frontend"], ["Vue", "Web frontend"], ["TypeScript", "Web frontend"], ["Go", "Go"]]);
   assert.deepEqual(splitFamilies(groups, familyOf), [{ family: "Web frontend", buckets: ["Backend", "Web"] }]);
+});
+
+test("project types are weighted by the people asked for in the latest round, split across a row's chosen types", () => {
+  const demand = [
+    { quarter: "2026-Q3", people: "9", project_types: "Umsetzung" },
+    { quarter: "2026-Q4", people: "2", project_types: "Discovery; Regelungsbegleitung" },
+    { quarter: "2026-Q4", people: "3", project_types: " Discovery " },
+    { quarter: "2026-Q4", people: "4", project_types: "" },
+  ];
+  assert.deepEqual(typeDemand(demand), new Map([["Discovery", 4], ["Regelungsbegleitung", 1]]));
+  assert.deepEqual(typeDemand([]), new Map());
+});
+
+test("the prompt keeps buckets distinct, and offers project types as names for buckets that mainly serve them", () => {
+  const plain = bucketPrompt(["React", "Frontend development"], []);
+  assert.match(plain, /subset/i);
+  assert.doesNotMatch(plain, /Project types/);
+  const types = [{ name: "Discovery", english: "", areas: ["Prototyping"] }, { name: "Umsetzungsberatung", english: "Implementation consulting", areas: [] }];
+  const text = bucketPrompt(["Prototyping"], [], new Map(), new Map(), new Map(), { projectTypes: types, typeDemand: new Map([["Discovery", 3], ["Umsetzungsberatung", 1]]) });
+  assert.match(text, /^Project types/m);
+  assert.match(text, /^- Discovery \(75%\): Prototyping$/m);
+  assert.match(text, /^- Umsetzungsberatung \(Implementation consulting, 25%\)$/m);
+  assert.match(text, /official term/i);
+  assert.match(text, /English translation/i);
+});
+
+test("the prompt keeps families narrow and forbids handing a current bucket's name to another bucket", () => {
+  const text = bucketPrompt(["CSS", "Rust"], [{ name: "Web", areas: ["CSS"] }]);
+  assert.match(text, /shadow bucket/i);
+  assert.match(text, /family of one/i);
+  assert.match(text, /never give a current bucket's name to a different bucket/i);
 });
