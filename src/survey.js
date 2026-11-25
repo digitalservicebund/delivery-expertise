@@ -366,14 +366,14 @@ const dot = (type) => $("span", { class: "dot", style: `background:${TYPE_COLOUR
 
 function renderTypes() {
   const full = chosenTypes.length >= MAX_PROJECT_TYPES;
-  typesBox.replaceChildren(...projectTypes.map(({ name, description }) => {
+  typesBox.replaceChildren(...projectTypes.map(({ name, english, description }) => {
     const on = chosenTypes.includes(name);
     const input = $("input", { type: "checkbox", value: name });
     input.checked = on;
     input.disabled = full && !on;
     input.addEventListener("change", () => chooseType(name, input.checked));
-    const desc = description ? [$("span", { class: "desc" }, `(${description})`)] : [];
-    return $("label", { class: full && !on ? "full" : "" }, input, name, ...desc, ...(on ? [dot(name)] : []));
+    const translation = english ? [$("span", { class: "desc" }, english)] : [];
+    return $("label", { class: full && !on ? "full" : "", ...(description ? { title: description } : {}) }, input, $("span", { class: "name" }, name, ...translation), ...(on ? [dot(name)] : []));
   }));
   // A chosen type that suggests nothing in the cloud: its areas are blank, or named unlike the area list.
   const silent = chosenTypes.filter((t) => !catalogue.some((a) => typesOf(a).includes(t)));
